@@ -111,6 +111,38 @@ describe("SessionActivityStore", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
+  it("invalidate discards in-flight load and forces refetch", async () => {
+    const { promise: s1Hang, resolve: resolveS1 } =
+      createDeferred<SessionActivityResponse>();
+    vi.mocked(api.getSessionActivity).mockReturnValueOnce(
+      s1Hang,
+    );
+
+    // Start a load that hangs.
+    const p1 = sessionActivity.load("s1");
+
+    // SSE fires while minimap is hidden — invalidate.
+    sessionActivity.invalidate();
+
+    // Stale response arrives — should be discarded.
+    resolveS1(makeResponse(3));
+    await p1;
+
+    expect(sessionActivity.buckets.length).toBe(0);
+    expect(sessionActivity.loaded).toBe(false);
+
+    // Reopen triggers load — should refetch, not short-circuit.
+    vi.mocked(api.getSessionActivity).mockResolvedValueOnce(
+      makeResponse(5),
+    );
+    await sessionActivity.load("s1");
+
+    expect(sessionActivity.buckets.length).toBe(5);
+    expect(
+      vi.mocked(api.getSessionActivity),
+    ).toHaveBeenCalledTimes(2);
+  });
+
   it("tracks loaded lifecycle", async () => {
     expect(sessionActivity.loaded).toBe(false);
     expect(sessionActivity.loading).toBe(false);
