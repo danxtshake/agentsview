@@ -85,8 +85,9 @@
     const rect = (
       e.currentTarget as SVGElement
     ).getBoundingClientRect();
-    const chartRect = chartRef?.getBoundingClientRect();
-    if (!chartRect) return;
+    const parentRect =
+      containerRef?.getBoundingClientRect();
+    if (!parentRect) return;
     const scrollLeft = chartRef?.scrollLeft ?? 0;
     const range =
       formatTime(bar.bucket.start_time) +
@@ -98,9 +99,9 @@
       x:
         rect.left +
         rect.width / 2 -
-        chartRect.left +
+        parentRect.left +
         scrollLeft,
-      y: rect.top - 4 - chartRect.top,
+      y: rect.top - 4 - parentRect.top,
       text:
         `${range} \u2014 ${bar.bucket.user_count} user, ` +
         `${bar.bucket.assistant_count} assistant`,
@@ -230,16 +231,16 @@
           {/if}
         {/each}
       </svg>
-
-      {#if tooltip}
-        <div
-          class="minimap-tooltip"
-          style="left: {tooltip.x}px; top: {tooltip.y}px;"
-        >
-          {tooltip.text}
-        </div>
-      {/if}
     </div>
+
+    {#if tooltip}
+      <div
+        class="minimap-tooltip"
+        style="left: {tooltip.x}px; top: {tooltip.y}px;"
+      >
+        {tooltip.text}
+      </div>
+    {/if}
 
     <div class="minimap-axis">
       <span class="axis-time">{startTime}</span>

@@ -149,6 +149,31 @@ describe('MessagesStore', () => {
     expect(messages.mainModel).toBe('claude-3-opus');
   });
 
+  it('should not carry over mainModel to a different session', async () => {
+    const s1Msgs = Array.from({ length: 3 }, (_, i) => ({
+      ...makeMessage(i),
+      model: 'claude-3-opus',
+    }));
+    await setupSession('s1', 3, s1Msgs);
+    expect(messages.mainModel).toBe('claude-3-opus');
+
+    // Switch to s2 with a different model.
+    const s2Msgs = Array.from({ length: 3 }, (_, i) => ({
+      ...makeMessage(i),
+      model: 'claude-3-sonnet',
+    }));
+    vi.mocked(api.getSession).mockResolvedValue(
+      makeSession('s2', 3),
+    );
+    vi.mocked(api.getMessages).mockResolvedValue(
+      makeMessagesResponse(s2Msgs),
+    );
+    await messages.loadSession('s2');
+
+    // Must show s2's model, not s1's.
+    expect(messages.mainModel).toBe('claude-3-sonnet');
+  });
+
   it('should not reuse reload promise from different session', async () => {
     await setupSession('s1', 10);
 
