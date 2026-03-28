@@ -14,7 +14,6 @@
   let { sessionId }: Props = $props();
 
   let containerRef = $state<HTMLDivElement | null>(null);
-  let chartRef = $state<HTMLDivElement | null>(null);
   let containerWidth = $state(300);
 
   $effect(() => {
@@ -88,7 +87,6 @@
     const parentRect =
       containerRef?.getBoundingClientRect();
     if (!parentRect) return;
-    const scrollLeft = chartRef?.scrollLeft ?? 0;
     const range =
       formatTime(bar.bucket.start_time) +
       "\u2013" +
@@ -97,10 +95,7 @@
       bar.bucket.user_count + bar.bucket.assistant_count;
     tooltip = {
       x:
-        rect.left +
-        rect.width / 2 -
-        parentRect.left +
-        scrollLeft,
+        rect.left + rect.width / 2 - parentRect.left,
       y: rect.top - 4 - parentRect.top,
       text:
         `${range} \u2014 ${bar.bucket.user_count} user, ` +
@@ -178,7 +173,7 @@
       No timestamp data available
     </div>
   {:else if chart}
-    <div class="minimap-chart" bind:this={chartRef}>
+    <div class="minimap-chart">
       <svg
         width={chart.svgWidth}
         height={BAR_HEIGHT}
@@ -251,6 +246,7 @@
 
 <style>
   .activity-minimap {
+    position: relative;
     padding: 6px 14px 4px;
     border-bottom: 1px solid var(--border-muted);
   }
