@@ -283,6 +283,238 @@ func TestStoreAnalyticsSummary(t *testing.T) {
 	t.Logf("summary: %+v", summary)
 }
 
+func seedActivitySession(
+	t *testing.T, store *Store, sid string, msgs []struct {
+		ordinal int
+		role    string
+		content string
+		ts      string
+		system  bool
+	},
+) {
+	t.Helper()
+	pg := store.DB()
+
+	// PG doesn't allow multi-statement prepared queries,
+	// so run each statement separately.
+	if _, err := pg.Exec(
+		`DELETE FROM messages WHERE session_id = $1`, sid,
+	); err != nil {
+		t.Fatalf("deleting messages: %v", err)
+	}
+	if _, err := pg.Exec(
+		`DELETE FROM sessions WHERE id = $1`, sid,
+	); err != nil {
+		t.Fatalf("deleting session: %v", err)
+	}
+	if _, err := pg.Exec(`
+		INSERT INTO sessions
+			(id, machine, project, agent, first_message,
+			 started_at, ended_at, message_count,
+			 user_message_count)
+		VALUES
+			($1, 'test-machine', 'test-project',
+			 'claude', 'activity test',
+			 '2026-03-26T10:00:00Z'::timestamptz,
+			 '2026-03-26T11:00:00Z'::timestamptz,
+			 $2, 0)
+	`, sid, len(msgs)); err != nil {
+		t.Fatalf("inserting session: %v", err)
+	}
+
+	for _, m := range msgs {
+		var tsVal interface{} = nil
+		if m.ts != "" {
+			tsVal = m.ts
+		}
+		if _, err := pg.Exec(`
+			INSERT INTO messages
+				(session_id, ordinal, role, content,
+				 timestamp, content_length, is_system)
+			VALUES ($1, $2, $3, $4,
+				$5::timestamptz, $6, $7)
+		`, sid, m.ordinal, m.role, m.content,
+			tsVal, len(m.content), m.system); err != nil {
+			t.Fatalf("inserting message ord=%d: %v",
+				m.ordinal, err)
+		}
+	}
+}
+
+func TestStoreGetSessionActivity(t *testing.T) {
+	pgURL := testPGURL(t)
+	ensureStoreSchema(t, pgURL)
+
+	store, err := NewStore(pgURL, testSchema, true)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	sid := "store-test-activity"
+	seedActivitySession(t, store, sid, []struct {
+		ordinal int
+		role    string
+		content string
+		ts      string
+		system  bool
+	}{
+		{0, "user", "hello", "2026-03-26T10:00:00Z", false},
+		{1, "assistant", "hi", "2026-03-26T10:00:30Z", false},
+		{2, "user", "next", "2026-03-26T10:01:30Z", false},
+		{3, "assistant", "resp", "2026-03-26T10:02:00Z", false},
+		{4, "user", "back", "2026-03-26T10:28:00Z", false},
+		{5, "assistant", "wb", "2026-03-26T10:29:00Z", false},
+		// System message — excluded from buckets.
+		{6, "user", "This session is being continued from a previous conversation.", "2026-03-26T10:29:30Z", true},
+	})
+
+	ctx := context.Background()
+	resp, err := store.GetSessionActivity(ctx, sid)
+	if err != nil {
+		t.Fatalf("GetSessionActivity: %v", err)
+	}
+
+	if resp.IntervalSeconds != 60 {
+		t.Errorf("interval = %d, want 60",
+			resp.IntervalSeconds)
+	}
+
+	if resp.TotalMessages != 7 {
+		t.Errorf("total = %d, want 7",
+			resp.TotalMessages)
+	}
+
+	if len(resp.Buckets) < 28 {
+		t.Errorf("bucket count = %d, want >= 28",
+			len(resp.Buckets))
+	}
+
+	first := resp.Buckets[0]
+	if first.UserCount != 1 || first.AssistantCount != 1 {
+		t.Errorf("first bucket: user=%d asst=%d, want 1,1",
+			first.UserCount, first.AssistantCount)
+	}
+	if first.FirstOrdinal == nil || *first.FirstOrdinal != 0 {
+		t.Errorf("first bucket first_ordinal: got %v, want 0",
+			first.FirstOrdinal)
+	}
+
+	mid := resp.Buckets[15]
+	if mid.UserCount != 0 || mid.AssistantCount != 0 {
+		t.Errorf("mid bucket: user=%d asst=%d, want 0,0",
+			mid.UserCount, mid.AssistantCount)
+	}
+	if mid.FirstOrdinal != nil {
+		t.Errorf("mid bucket first_ordinal: got %v, want nil",
+			mid.FirstOrdinal)
+	}
+}
+
+func TestStoreGetSessionActivity_NoMessages(t *testing.T) {
+	pgURL := testPGURL(t)
+	ensureStoreSchema(t, pgURL)
+
+	store, err := NewStore(pgURL, testSchema, true)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	sid := "store-test-activity-empty"
+	seedActivitySession(t, store, sid, nil)
+
+	resp, err := store.GetSessionActivity(
+		context.Background(), sid,
+	)
+	if err != nil {
+		t.Fatalf("GetSessionActivity: %v", err)
+	}
+	if len(resp.Buckets) != 0 {
+		t.Errorf("buckets = %d, want 0",
+			len(resp.Buckets))
+	}
+}
+
+func TestStoreGetSessionActivity_NullTimestamps(
+	t *testing.T,
+) {
+	pgURL := testPGURL(t)
+	ensureStoreSchema(t, pgURL)
+
+	store, err := NewStore(pgURL, testSchema, true)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	sid := "store-test-activity-nullts"
+	seedActivitySession(t, store, sid, []struct {
+		ordinal int
+		role    string
+		content string
+		ts      string
+		system  bool
+	}{
+		{0, "user", "hi", "", false},
+		{1, "assistant", "hello", "", false},
+	})
+
+	resp, err := store.GetSessionActivity(
+		context.Background(), sid,
+	)
+	if err != nil {
+		t.Fatalf("GetSessionActivity: %v", err)
+	}
+	if len(resp.Buckets) != 0 {
+		t.Errorf("buckets = %d, want 0",
+			len(resp.Buckets))
+	}
+	if resp.TotalMessages != 2 {
+		t.Errorf("total = %d, want 2",
+			resp.TotalMessages)
+	}
+}
+
+func TestStoreGetSessionActivity_SingleMessage(
+	t *testing.T,
+) {
+	pgURL := testPGURL(t)
+	ensureStoreSchema(t, pgURL)
+
+	store, err := NewStore(pgURL, testSchema, true)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	sid := "store-test-activity-single"
+	seedActivitySession(t, store, sid, []struct {
+		ordinal int
+		role    string
+		content string
+		ts      string
+		system  bool
+	}{
+		{0, "user", "hi", "2026-03-26T10:00:00Z", false},
+	})
+
+	resp, err := store.GetSessionActivity(
+		context.Background(), sid,
+	)
+	if err != nil {
+		t.Fatalf("GetSessionActivity: %v", err)
+	}
+	if len(resp.Buckets) != 1 {
+		t.Fatalf("buckets = %d, want 1",
+			len(resp.Buckets))
+	}
+	if resp.Buckets[0].UserCount != 1 {
+		t.Errorf("user count = %d, want 1",
+			resp.Buckets[0].UserCount)
+	}
+}
+
 func TestStoreGetSessionActivity_FractionalTimestamps(
 	t *testing.T,
 ) {
@@ -296,33 +528,17 @@ func TestStoreGetSessionActivity_FractionalTimestamps(
 	defer store.Close()
 
 	sid := "store-test-frac-ts"
-	_, err = store.DB().Exec(`
-		DELETE FROM messages WHERE session_id = $1;
-		DELETE FROM sessions WHERE id = $1;
-		INSERT INTO sessions
-			(id, machine, project, agent, first_message,
-			 started_at, ended_at, message_count,
-			 user_message_count)
-		VALUES
-			($1, 'test-machine', 'test-project',
-			 'claude', 'frac test',
-			 '2026-03-26T10:00:00Z'::timestamptz,
-			 '2026-03-26T10:02:00Z'::timestamptz,
-			 3, 2);
-		INSERT INTO messages
-			(session_id, ordinal, role, content,
-			 timestamp, content_length)
-		VALUES
-			($1, 0, 'user', 'a',
-			 '2026-03-26T10:00:00.900Z'::timestamptz, 1),
-			($1, 1, 'assistant', 'b',
-			 '2026-03-26T10:00:59.100Z'::timestamptz, 1),
-			($1, 2, 'user', 'c',
-			 '2026-03-26T10:01:01.000Z'::timestamptz, 1)
-	`, sid)
-	if err != nil {
-		t.Fatalf("inserting test data: %v", err)
-	}
+	seedActivitySession(t, store, sid, []struct {
+		ordinal int
+		role    string
+		content string
+		ts      string
+		system  bool
+	}{
+		{0, "user", "a", "2026-03-26T10:00:00.900Z", false},
+		{1, "assistant", "b", "2026-03-26T10:00:59.100Z", false},
+		{2, "user", "c", "2026-03-26T10:01:01.000Z", false},
+	})
 
 	ctx := context.Background()
 	resp, err := store.GetSessionActivity(ctx, sid)
