@@ -85,48 +85,6 @@ func (s *Store) GetAllMessages(
 	return msgs, nil
 }
 
-// GetMinimap returns lightweight metadata for all messages
-// in a session.
-func (s *Store) GetMinimap(
-	ctx context.Context, sessionID string,
-) ([]db.MinimapEntry, error) {
-	return s.GetMinimapFrom(ctx, sessionID, 0)
-}
-
-// GetMinimapFrom returns lightweight metadata for messages
-// starting at ordinal >= from.
-func (s *Store) GetMinimapFrom(
-	ctx context.Context, sessionID string, from int,
-) ([]db.MinimapEntry, error) {
-	rows, err := s.pg.QueryContext(ctx, `
-		SELECT ordinal, role, content_length,
-			has_thinking, has_tool_use
-		FROM messages
-		WHERE session_id = $1 AND ordinal >= $2
-		ORDER BY ordinal ASC`, sessionID, from)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"querying minimap: %w", err,
-		)
-	}
-	defer rows.Close()
-
-	entries := []db.MinimapEntry{}
-	for rows.Next() {
-		var e db.MinimapEntry
-		if err := rows.Scan(
-			&e.Ordinal, &e.Role, &e.ContentLength,
-			&e.HasThinking, &e.HasToolUse,
-		); err != nil {
-			return nil, fmt.Errorf(
-				"scanning minimap entry: %w", err,
-			)
-		}
-		entries = append(entries, e)
-	}
-	return entries, rows.Err()
-}
-
 // SearchSession performs ILIKE substring search within a single
 // session's messages, returning matching ordinals.
 func (s *Store) SearchSession(

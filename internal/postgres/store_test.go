@@ -257,28 +257,6 @@ func TestStoreSearch(t *testing.T) {
 	t.Logf("search results: %d", len(page.Results))
 }
 
-func TestStoreGetMinimap(t *testing.T) {
-	pgURL := testPGURL(t)
-	ensureStoreSchema(t, pgURL)
-
-	store, err := NewStore(pgURL, testSchema, true)
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	defer store.Close()
-
-	ctx := context.Background()
-	entries, err := store.GetMinimap(
-		ctx, "store-test-001",
-	)
-	if err != nil {
-		t.Fatalf("GetMinimap: %v", err)
-	}
-	if len(entries) != 2 {
-		t.Errorf("got %d entries, want 2", len(entries))
-	}
-}
-
 func TestStoreAnalyticsSummary(t *testing.T) {
 	pgURL := testPGURL(t)
 	ensureStoreSchema(t, pgURL)
@@ -303,6 +281,86 @@ func TestStoreAnalyticsSummary(t *testing.T) {
 		t.Error("expected at least 1 session in summary")
 	}
 	t.Logf("summary: %+v", summary)
+}
+
+func TestStoreGetSessionActivity_FractionalTimestamps(
+	t *testing.T,
+) {
+	pgURL := testPGURL(t)
+	ensureStoreSchema(t, pgURL)
+
+	store, err := NewStore(pgURL, testSchema, true)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	sid := "store-test-frac-ts"
+	_, err = store.DB().Exec(`
+		DELETE FROM messages WHERE session_id = $1;
+		DELETE FROM sessions WHERE id = $1;
+		INSERT INTO sessions
+			(id, machine, project, agent, first_message,
+			 started_at, ended_at, message_count,
+			 user_message_count)
+		VALUES
+			($1, 'test-machine', 'test-project',
+			 'claude', 'frac test',
+			 '2026-03-26T10:00:00Z'::timestamptz,
+			 '2026-03-26T10:02:00Z'::timestamptz,
+			 3, 2);
+		INSERT INTO messages
+			(session_id, ordinal, role, content,
+			 timestamp, content_length)
+		VALUES
+			($1, 0, 'user', 'a',
+			 '2026-03-26T10:00:00.900Z'::timestamptz, 1),
+			($1, 1, 'assistant', 'b',
+			 '2026-03-26T10:00:59.100Z'::timestamptz, 1),
+			($1, 2, 'user', 'c',
+			 '2026-03-26T10:01:01.000Z'::timestamptz, 1)
+	`, sid)
+	if err != nil {
+		t.Fatalf("inserting test data: %v", err)
+	}
+
+	ctx := context.Background()
+	resp, err := store.GetSessionActivity(ctx, sid)
+	if err != nil {
+		t.Fatalf("GetSessionActivity: %v", err)
+	}
+
+	if resp.IntervalSeconds != 60 {
+		t.Fatalf(
+			"interval = %d, want 60",
+			resp.IntervalSeconds,
+		)
+	}
+
+	if len(resp.Buckets) < 2 {
+		t.Fatalf(
+			"buckets = %d, want >= 2",
+			len(resp.Buckets),
+		)
+	}
+
+	// First bucket should have both sub-second messages.
+	first := resp.Buckets[0]
+	if first.UserCount != 1 || first.AssistantCount != 1 {
+		t.Errorf(
+			"first bucket: user=%d asst=%d, want 1,1",
+			first.UserCount, first.AssistantCount,
+		)
+	}
+
+	// Second bucket should have the third message.
+	second := resp.Buckets[1]
+	if second.UserCount != 1 {
+		t.Errorf(
+			"second bucket user=%d, want 1",
+			second.UserCount,
+		)
+	}
 }
 
 func TestStoreWriteMethodsReturnReadOnly(t *testing.T) {

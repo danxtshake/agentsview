@@ -1033,32 +1033,6 @@ func TestMessageCRUD(t *testing.T) {
 	}
 }
 
-func TestMinimap(t *testing.T) {
-	d := testDB(t)
-
-	insertSession(t, d, "s1", "p", func(s *Session) {
-		s.MessageCount = 2
-	})
-
-	m2 := asstMsg("s1", 1, "Hi")
-	m2.HasThinking = true
-	m2.HasToolUse = true
-
-	insertMessages(t, d,
-		userMsg("s1", 0, "Hello"),
-		m2,
-	)
-
-	entries, err := d.GetMinimap(context.Background(), "s1")
-	requireNoError(t, err, "GetMinimap")
-	if len(entries) != 2 {
-		t.Fatalf("got %d entries, want 2", len(entries))
-	}
-	if !entries[1].HasThinking {
-		t.Error("expected HasThinking on second entry")
-	}
-}
-
 func TestReplaceSessionMessages(t *testing.T) {
 	d := testDB(t)
 
@@ -2138,94 +2112,6 @@ func TestSetCursorSecretDefensiveCopy(t *testing.T) {
 			"DecodeCursor failed after caller mutated secret: %v",
 			err,
 		)
-	}
-}
-
-func TestSampleMinimap(t *testing.T) {
-	// Create a helper to generate n entries
-	makeEntries := func(n int) []MinimapEntry {
-		entries := make([]MinimapEntry, 0, n)
-		for i := range n {
-			entries = append(entries, MinimapEntry{
-				Ordinal: i,
-				Role:    "user",
-			})
-		}
-		return entries
-	}
-
-	tests := []struct {
-		name    string
-		entries []MinimapEntry
-		max     int
-		wantLen int
-		// simple check function for ordinals
-		check func([]MinimapEntry) error
-	}{
-		{
-			name:    "SampleDown",
-			entries: makeEntries(10),
-			max:     3,
-			wantLen: 3,
-			check: func(got []MinimapEntry) error {
-				if got[0].Ordinal != 0 || got[1].Ordinal != 4 || got[2].Ordinal != 9 {
-					return fmt.Errorf("ordinals = [%d %d %d], want [0 4 9]",
-						got[0].Ordinal, got[1].Ordinal, got[2].Ordinal)
-				}
-				return nil
-			},
-		},
-		{
-			name:    "ExactSize",
-			entries: makeEntries(5),
-			max:     5,
-			wantLen: 5,
-		},
-		{
-			name:    "SmallerThanMax",
-			entries: makeEntries(3),
-			max:     5,
-			wantLen: 3,
-		},
-		{
-			name:    "Empty",
-			entries: makeEntries(0),
-			max:     5,
-			wantLen: 0,
-		},
-		{
-			name:    "MaxOne",
-			entries: makeEntries(10),
-			max:     1,
-			wantLen: 1,
-			check: func(got []MinimapEntry) error {
-				if got[0].Ordinal != 0 {
-					return fmt.Errorf("ordinal = %d, want 0", got[0].Ordinal)
-				}
-				return nil
-			},
-		},
-		{
-			name:    "MaxZero",
-			entries: makeEntries(10),
-			max:     0,
-			wantLen: 10, // Returns original if max <= 0
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := SampleMinimap(tt.entries, tt.max)
-			if len(got) != tt.wantLen {
-				t.Errorf("len = %d, want %d", len(got), tt.wantLen)
-				return
-			}
-			if tt.check != nil {
-				if err := tt.check(got); err != nil {
-					t.Error(err)
-				}
-			}
-		})
 	}
 }
 

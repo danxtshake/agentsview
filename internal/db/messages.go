@@ -73,15 +73,6 @@ type Message struct {
 	IsSystem      bool            `json:"is_system"` // persisted, filters search/analytics
 }
 
-// MinimapEntry is a lightweight message summary for minimap rendering.
-type MinimapEntry struct {
-	Ordinal       int    `json:"ordinal"`
-	Role          string `json:"role"`
-	ContentLength int    `json:"content_length"`
-	HasThinking   bool   `json:"has_thinking"`
-	HasToolUse    bool   `json:"has_tool_use"`
-}
-
 // GetMessages returns paginated messages for a session.
 // from: starting ordinal (inclusive)
 // limit: max messages to return
@@ -146,64 +137,6 @@ func (db *DB) GetAllMessages(
 		return nil, err
 	}
 	return msgs, nil
-}
-
-// GetMinimap returns lightweight metadata for all messages in a session.
-func (db *DB) GetMinimap(
-	ctx context.Context, sessionID string,
-) ([]MinimapEntry, error) {
-	return db.GetMinimapFrom(ctx, sessionID, 0)
-}
-
-// GetMinimapFrom returns lightweight metadata for messages in a
-// session starting at ordinal >= from.
-func (db *DB) GetMinimapFrom(
-	ctx context.Context, sessionID string, from int,
-) ([]MinimapEntry, error) {
-	rows, err := db.getReader().QueryContext(ctx, `
-		SELECT ordinal, role, content_length, has_thinking, has_tool_use
-		FROM messages
-		WHERE session_id = ? AND ordinal >= ?
-		ORDER BY ordinal ASC`, sessionID, from)
-	if err != nil {
-		return nil, fmt.Errorf("querying minimap: %w", err)
-	}
-	defer rows.Close()
-
-	var entries []MinimapEntry
-	for rows.Next() {
-		var e MinimapEntry
-		if err := rows.Scan(
-			&e.Ordinal, &e.Role, &e.ContentLength,
-			&e.HasThinking, &e.HasToolUse,
-		); err != nil {
-			return nil, fmt.Errorf("scanning minimap entry: %w", err)
-		}
-		entries = append(entries, e)
-	}
-	return entries, rows.Err()
-}
-
-// SampleMinimap downsamples entries to at most max points while
-// preserving ordering and both endpoints.
-func SampleMinimap(
-	entries []MinimapEntry, max int,
-) []MinimapEntry {
-	if max <= 0 || len(entries) <= max {
-		return entries
-	}
-	if max == 1 {
-		return []MinimapEntry{entries[0]}
-	}
-
-	sampled := make([]MinimapEntry, 0, max)
-	lastIdx := len(entries) - 1
-	den := max - 1
-	for i := range max {
-		idx := (i * lastIdx) / den
-		sampled = append(sampled, entries[idx])
-	}
-	return sampled
 }
 
 // insertMessagesTx batch-inserts messages within an existing

@@ -18,6 +18,7 @@
   } from "../../utils/content-parser.js";
   import { isSystemMessage } from "../../utils/messages.js";
   import { inSessionSearch } from "../../stores/inSessionSearch.svelte.js";
+  import { sessionActivity } from "../../stores/sessionActivity.svelte.js";
   import SessionFindBar from "./SessionFindBar.svelte";
 
   let containerRef: HTMLDivElement | undefined = $state(undefined);
@@ -126,24 +127,61 @@
     };
   }
 
+  function publishVisibleTimestamp() {
+    const items =
+      virtualizer.instance?.getVirtualItems() ?? [];
+    for (const vi of items) {
+      const item =
+        displayItemsAsc[
+          ui.sortNewestFirst
+            ? displayItemsAsc.length - 1 - vi.index
+            : vi.index
+        ];
+      if (!item) continue;
+      const ts =
+        item.kind === "message"
+          ? item.message.timestamp
+          : item.timestamp;
+      if (ts) {
+        sessionActivity.firstVisibleTimestamp = ts;
+        return;
+      }
+    }
+  }
+
+  // Recompute visible timestamp when minimap opens.
+  $effect(() => {
+    if (ui.activityMinimapOpen) {
+      publishVisibleTimestamp();
+    }
+  });
+
   function handleScroll() {
     if (!containerRef) return;
     if (scrollRaf !== null) return;
     scrollRaf = requestAnimationFrame(() => {
       scrollRaf = null;
       if (!containerRef) return;
-      const items = virtualizer.instance?.getVirtualItems() ?? [];
+      const items =
+        virtualizer.instance?.getVirtualItems() ?? [];
       if (items.length > 0 && messages.hasOlder) {
         const firstVisible = items[0]!.index;
-        const lastVisible = items[items.length - 1]!.index;
+        const lastVisible =
+          items[items.length - 1]!.index;
         const threshold = 30;
         if (
           (ui.sortNewestFirst &&
-            lastVisible >= displayItemsAsc.length - threshold) ||
-          (!ui.sortNewestFirst && firstVisible <= threshold)
+            lastVisible >=
+              displayItemsAsc.length - threshold) ||
+          (!ui.sortNewestFirst &&
+            firstVisible <= threshold)
         ) {
           messages.loadOlder();
         }
+      }
+
+      if (ui.activityMinimapOpen) {
+        publishVisibleTimestamp();
       }
     });
   }

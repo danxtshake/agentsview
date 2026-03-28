@@ -19,9 +19,16 @@ class MessagesStore {
   messageCount: number = $state(0);
   hasOlder: boolean = $state(false);
   loadingOlder: boolean = $state(false);
-  mainModel: string = $derived(
-    !this.loading ? computeMainModel(this.messages) : "",
-  );
+  private _stableMainModel: string = "";
+  mainModel: string = $derived.by(() => {
+    if (this.loading) return this._stableMainModel;
+    const model =
+      this.messages.length > 0
+        ? computeMainModel(this.messages)
+        : "";
+    this._stableMainModel = model;
+    return model;
+  });
   private abortController: AbortController | null = null;
   private reloadPromise: Promise<void> | null = null;
   private reloadSessionId: string | null = null;
@@ -113,6 +120,7 @@ class MessagesStore {
     this.messages = [];
     this.sessionId = null;
     this.loading = false;
+    this._stableMainModel = "";
     this.messageCount = 0;
     this.hasOlder = false;
     this.loadingOlder = false;

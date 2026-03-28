@@ -4,14 +4,12 @@ import * as api from '../api/client.js';
 import type {
   Message,
   MessagesResponse,
-  MinimapResponse,
   Session,
 } from '../api/types.js';
 
 // Mock the API client
 vi.mock('../api/client.js', () => ({
   getMessages: vi.fn(),
-  getMinimap: vi.fn(),
   getSession: vi.fn(),
 }));
 
@@ -73,13 +71,6 @@ function makeMessagesResponse(
   };
 }
 
-function emptyMinimap(): MinimapResponse {
-  return {
-    entries: [],
-    count: 0,
-  };
-}
-
 async function setupSession(
   sessionId: string,
   messageCount: number,
@@ -91,7 +82,6 @@ async function setupSession(
   vi.mocked(api.getMessages).mockResolvedValue(
     makeMessagesResponse(msgs),
   );
-  vi.mocked(api.getMinimap).mockResolvedValue(emptyMinimap());
   await messages.loadSession(sessionId);
 }
 
@@ -131,6 +121,32 @@ describe('MessagesStore', () => {
     resolveReload(makeSession('s1', 10));
     resolveS2(makeSession('s2', 5));
     await Promise.all([p1, p2]);
+  });
+
+  it('should retain mainModel during reload', async () => {
+    const msgs = Array.from({ length: 5 }, (_, i) => ({
+      ...makeMessage(i),
+      model: 'claude-3-opus',
+    }));
+    await setupSession('s1', 5, msgs);
+
+    expect(messages.mainModel).toBe('claude-3-opus');
+
+    // Start a reload that hangs — mainModel must stay stable.
+    const { promise: hang, resolve: resolveHang } =
+      createDeferred<Session>();
+    vi.mocked(api.getSession).mockReturnValue(hang);
+
+    const p = messages.reload();
+
+    // While reload is in flight, mainModel should still be
+    // computed from the existing messages, not blank.
+    expect(messages.mainModel).toBe('claude-3-opus');
+
+    resolveHang(makeSession('s1', 5));
+    await p;
+
+    expect(messages.mainModel).toBe('claude-3-opus');
   });
 
   it('should not reuse reload promise from different session', async () => {
@@ -187,7 +203,6 @@ describe('MessagesStore', () => {
     vi.mocked(api.getSession).mockResolvedValue(
       makeSession('s1', 20),
     );
-    vi.mocked(api.getMinimap).mockResolvedValue(emptyMinimap());
     vi.mocked(api.getMessages).mockResolvedValueOnce(
       makeMessagesResponse(
         Array.from(
@@ -284,7 +299,6 @@ describe('MessagesStore', () => {
     vi.mocked(api.getSession).mockResolvedValue(
       makeSession('s1', 2),
     );
-    vi.mocked(api.getMinimap).mockResolvedValue(emptyMinimap());
     vi.mocked(api.getMessages).mockResolvedValueOnce(
       makeMessagesResponse([makeMessage(0), makeMessage(1)]),
     );
@@ -338,7 +352,6 @@ describe('MessagesStore', () => {
     vi.mocked(api.getSession).mockResolvedValue(
       makeSession('s1', 2),
     );
-    vi.mocked(api.getMinimap).mockResolvedValue(emptyMinimap());
     vi.mocked(api.getMessages).mockResolvedValueOnce(
       makeMessagesResponse([makeMessage(0), makeMessage(1)]),
     );
@@ -397,9 +410,6 @@ describe('MessagesStore', () => {
       const count = 25_000;
       vi.mocked(api.getSession).mockResolvedValue(
         makeSession('s1', count),
-      );
-      vi.mocked(api.getMinimap).mockResolvedValue(
-        emptyMinimap(),
       );
       const descPage = Array.from(
         { length: 100 },

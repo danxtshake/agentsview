@@ -72,12 +72,6 @@ export interface Message {
   is_system: boolean;
 }
 
-/** Matches Go MinimapEntry struct */
-export type MinimapEntry = Pick<
-  Message,
-  "ordinal" | "role" | "content_length" | "has_thinking" | "has_tool_use"
->;
-
 /** Matches Go SearchResult struct in internal/db/search.go */
 export interface SearchResult {
   session_id: string;
@@ -101,11 +95,6 @@ export interface Stats {
 
 export interface MessagesResponse {
   messages: Message[];
-  count: number;
-}
-
-export interface MinimapResponse {
-  entries: MinimapEntry[];
   count: number;
 }
 
