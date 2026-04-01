@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -245,6 +246,7 @@ func EnsureSchema(
 		},
 	}
 	tokenCoverageColumnsAdded := false
+	isAutomatedAdded := false
 	for _, a := range alters {
 		added, err := ensureColumn(ctx, db, a.table, a.column, a.stmt)
 		if err != nil {
@@ -254,6 +256,13 @@ func EnsureSchema(
 		case "has_total_output_tokens", "has_peak_context_tokens",
 			"has_context_tokens", "has_output_tokens":
 			tokenCoverageColumnsAdded = tokenCoverageColumnsAdded || added
+		case "is_automated":
+			isAutomatedAdded = isAutomatedAdded || added
+		}
+	}
+	if isAutomatedAdded {
+		if err := backfillIsAutomatedPG(ctx, db); err != nil {
+			return err
 		}
 	}
 	runRepair, err := shouldRunTokenCoverageRepair(
@@ -270,6 +279,32 @@ func EnsureSchema(
 	}
 	if err := markTokenCoverageRepairDone(ctx, db); err != nil {
 		return err
+	}
+	return nil
+}
+
+// backfillIsAutomatedPG sets is_automated = TRUE for existing
+// PG sessions whose first_message matches roborev prompt
+// patterns. Only runs when the column was newly added.
+func backfillIsAutomatedPG(
+	ctx context.Context, pg *sql.DB,
+) error {
+	res, err := pg.ExecContext(ctx,
+		`UPDATE sessions SET is_automated = TRUE
+		 WHERE first_message IS NOT NULL
+		   AND (first_message LIKE 'You are a code reviewer. Review the code changes shown below.%'
+		     OR first_message LIKE '# Fix Request' || E'\n' || '%')`)
+	if err != nil {
+		return fmt.Errorf(
+			"backfilling is_automated in PG: %w", err,
+		)
+	}
+	n, _ := res.RowsAffected()
+	if n > 0 {
+		log.Printf(
+			"pg migration: backfilled is_automated for %d sessions",
+			n,
+		)
 	}
 	return nil
 }

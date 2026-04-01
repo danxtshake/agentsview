@@ -389,7 +389,7 @@ func (db *DB) backfillIsAutomatedLocked(w *sql.DB) error {
 		 WHERE is_automated = 0
 		   AND first_message IS NOT NULL
 		   AND (first_message LIKE 'You are a code reviewer. Review the code changes shown below.%'
-		     OR first_message LIKE '# Fix Request%')`,
+		     OR first_message LIKE '# Fix Request' || X'0A' || '%')`,
 	).Scan(&count); err != nil {
 		return fmt.Errorf(
 			"probing automated backfill: %w", err,
@@ -402,7 +402,7 @@ func (db *DB) backfillIsAutomatedLocked(w *sql.DB) error {
 		`UPDATE sessions SET is_automated = 1
 		 WHERE first_message IS NOT NULL
 		   AND (first_message LIKE 'You are a code reviewer. Review the code changes shown below.%'
-		     OR first_message LIKE '# Fix Request%')`,
+		     OR first_message LIKE '# Fix Request' || X'0A' || '%')`,
 	)
 	if err != nil {
 		return fmt.Errorf(

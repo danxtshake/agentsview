@@ -5,9 +5,13 @@ import "strings"
 // automatedPrefixes are first_message prefixes that identify
 // automated (roborev) review and fix sessions. Matched
 // case-sensitively against the start of first_message.
+//
+// The review prefix is long enough to be unambiguous. The fix
+// prefix requires a trailing newline to avoid false positives
+// on user headings like "# Fix Request for login flow".
 var automatedPrefixes = []string{
 	"You are a code reviewer. Review the code changes shown below.",
-	"# Fix Request",
+	"# Fix Request\n",
 }
 
 // IsAutomatedSession returns true if the first message

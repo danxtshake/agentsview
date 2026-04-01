@@ -198,6 +198,15 @@ class AnalyticsStore {
     this.fetchAll();
   }
 
+  clearIncludeAutomated() {
+    this.includeAutomated = false;
+    sessions.filters.includeAutomated = false;
+    sessions.activeSessionId = null;
+    sessions.invalidateFilterCaches();
+    sessions.load();
+    this.fetchAll();
+  }
+
   clearRecentlyActive() {
     this.recentlyActive = false;
     sessions.filters.recentlyActive = false;

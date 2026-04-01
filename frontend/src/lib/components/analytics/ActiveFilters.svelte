@@ -173,10 +173,7 @@
     {#if analytics.includeAutomated}
       <button
         class="filter-chip"
-        onclick={() => {
-          analytics.includeAutomated = false;
-          analytics.fetchAll();
-        }}
+        onclick={() => analytics.clearIncludeAutomated()}
         title="Clear automated filter"
       >
         Automated included

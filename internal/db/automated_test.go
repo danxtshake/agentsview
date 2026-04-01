@@ -34,13 +34,18 @@ func TestIsAutomatedSession(t *testing.T) {
 			true,
 		},
 		{
-			"RoborevFixPromptExact",
+			"RoborevFixPromptExactNoNewline",
 			"# Fix Request",
-			true,
+			false,
 		},
 		{
 			"SimilarButNotReview",
 			"You are a code reviewer but I need help",
+			false,
+		},
+		{
+			"FixRequestWithSuffix",
+			"# Fix Request for login flow",
 			false,
 		},
 		{

@@ -51,7 +51,7 @@ class SyncStore {
   private lastStatsParams: {
     include_one_shot?: boolean;
     include_automated?: boolean;
-  } = {};
+  } = { include_one_shot: true };
   private statsVersion = 0;
   private syncCompleteListeners: SyncCompleteListener[] = [];
   private statusHydrated = false;
