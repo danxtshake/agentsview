@@ -778,26 +778,17 @@ func (db *DB) UpdateSessionIncremental(
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
-	// Recompute is_automated: read stored first_message and
-	// apply the detector with the new user_message_count.
-	isAutomated := false
-	if userMsgCount <= 1 {
-		var fm sql.NullString
-		_ = db.getWriter().QueryRow(
-			"SELECT first_message FROM sessions WHERE id = ?",
-			id,
-		).Scan(&fm)
-		if fm.Valid {
-			isAutomated = IsAutomatedSession(fm.String)
-		}
-	}
-
+	// is_automated requires single-turn (user_message_count <= 1).
+	// When the count grows past 1, clear the flag in SQL without
+	// an extra SELECT. UpsertSession already sets the flag for new
+	// sessions, so the only incremental transition is clearing it.
 	_, err := db.getWriter().Exec(`
 		UPDATE sessions SET
 			ended_at = COALESCE(?, ended_at),
 			message_count = ?,
 			user_message_count = ?,
-			is_automated = ?,
+			is_automated = CASE WHEN ? > 1 THEN 0
+				ELSE is_automated END,
 			file_size = ?,
 			file_mtime = ?,
 			total_output_tokens = ?,
@@ -805,7 +796,7 @@ func (db *DB) UpdateSessionIncremental(
 			has_total_output_tokens = ?,
 			has_peak_context_tokens = ?
 		WHERE id = ?`,
-		endedAt, msgCount, userMsgCount, isAutomated,
+		endedAt, msgCount, userMsgCount, userMsgCount,
 		fileSize, fileMtime,
 		totalOutputTokens, peakContextTokens,
 		hasTotalOutputTokens, hasPeakContextTokens, id,
