@@ -9,7 +9,7 @@
     type Opener,
   } from "../../api/client.js";
   import { copyToClipboard } from "../../utils/clipboard.js";
-  import { agentColor } from "../../utils/agents.js";
+  import { agentColor, agentLabel } from "../../utils/agents.js";
   import { formatTokenUsage } from "../../utils/format.js";
   import { sessions } from "../../stores/sessions.svelte.js";
   import { router } from "../../stores/router.svelte.js";
@@ -302,7 +302,7 @@
     canResume ||
     editorOpeners.length > 0 ||
     fileOpeners.length > 0 ||
-    sessionDir !== null,
+    (sessionDir !== null && !!session?.file_path),
   );
 
   function handleKeydown(e: KeyboardEvent) {
@@ -381,7 +381,7 @@
       <span
         class="agent-badge"
         style:background={agentColor(session.agent)}
-      >{session.agent}</span>
+      >{agentLabel(session.agent)}</span>
       {#if session.started_at}
         <span class="session-time">
           {new Date(session.started_at).toLocaleDateString(

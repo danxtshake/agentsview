@@ -10,10 +10,12 @@
   import { router } from "../../stores/router.svelte.js";
   import { downloadExport } from "../../api/client.js";
   import ProjectTypeahead from "./ProjectTypeahead.svelte";
+  import ImportModal from "../import/ImportModal.svelte";
 
   const isMac = navigator.platform.toUpperCase().includes("MAC");
   const modKey = isMac ? "Cmd" : "Ctrl";
 
+  let showImportModal = $state(false);
   let showBlockFilter = $state(false);
   let showOverflow = $state(false);
   let filterBtnRef: HTMLButtonElement | undefined =
@@ -422,6 +424,18 @@
       </svg>
     </button>
 
+    <button
+      class="header-btn"
+      onclick={() => showImportModal = true}
+      title="Import conversations"
+      aria-label="Import conversations"
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M2.75 14A1.75 1.75 0 011 12.25v-2.5a.75.75 0 011.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25v-2.5a.75.75 0 011.5 0v2.5A1.75 1.75 0 0113.25 14H2.75z"/>
+        <path d="M11.78 4.72a.75.75 0 00-1.06 0L8.75 6.69V1.5a.75.75 0 00-1.5 0v5.19L5.28 4.72a.75.75 0 00-1.06 1.06l3.25 3.25a.75.75 0 001.06 0l3.25-3.25a.75.75 0 000-1.06z"/>
+      </svg>
+    </button>
+
     <span class="header-divider"></span>
 
     <button
@@ -462,6 +476,15 @@
     </button>
   </div>
 </header>
+
+<ImportModal
+  bind:open={showImportModal}
+  onclose={() => showImportModal = false}
+  onimported={() => {
+    sessions.invalidateFilterCaches();
+    sessions.load();
+  }}
+/>
 
 <style>
   .header {

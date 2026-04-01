@@ -558,7 +558,7 @@ func (db *DB) UpsertSession(s Session) error {
 
 	_, err := db.getWriter().Exec(`
 		INSERT INTO sessions (
-			id, project, machine, agent, first_message,
+			id, project, machine, agent, first_message, display_name,
 			started_at, ended_at, message_count,
 			user_message_count, parent_session_id,
 			relationship_type,
@@ -566,7 +566,7 @@ func (db *DB) UpsertSession(s Session) error {
 			has_total_output_tokens, has_peak_context_tokens,
 			is_automated,
 			file_path, file_size, file_mtime, file_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			project = excluded.project,
 			machine = excluded.machine,
@@ -587,7 +587,7 @@ func (db *DB) UpsertSession(s Session) error {
 			file_size = excluded.file_size,
 			file_mtime = excluded.file_mtime,
 			file_hash = excluded.file_hash`,
-		s.ID, s.Project, s.Machine, s.Agent, s.FirstMessage,
+		s.ID, s.Project, s.Machine, s.Agent, s.FirstMessage, s.DisplayName,
 		s.StartedAt, s.EndedAt, s.MessageCount,
 		s.UserMessageCount, s.ParentSessionID,
 		s.RelationshipType,

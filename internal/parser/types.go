@@ -23,6 +23,8 @@ const (
 	AgentPi            AgentType = "pi"
 	AgentOpenClaw      AgentType = "openclaw"
 	AgentKimi          AgentType = "kimi"
+	AgentClaudeAI      AgentType = "claude-ai"
+	AgentChatGPT       AgentType = "chatgpt"
 )
 
 // AgentDef describes a supported coding agent's filesystem
@@ -207,6 +209,29 @@ var Registry = []AgentDef{
 		DiscoverFunc:   DiscoverKimiSessions,
 		FindSourceFunc: FindKimiSourceFile,
 	},
+	{
+		Type:        AgentClaudeAI,
+		DisplayName: "Claude.ai",
+		IDPrefix:    "claude-ai:",
+		FileBased:   false,
+	},
+	{
+		Type:        AgentChatGPT,
+		DisplayName: "ChatGPT",
+		IDPrefix:    "chatgpt:",
+		FileBased:   false,
+	},
+}
+
+// NonFileBackedAgents returns agent types where FileBased is false.
+func NonFileBackedAgents() []AgentType {
+	var agents []AgentType
+	for _, def := range Registry {
+		if !def.FileBased {
+			agents = append(agents, def.Type)
+		}
+	}
+	return agents
 }
 
 // AgentByType returns the AgentDef for the given type.
@@ -276,6 +301,7 @@ type ParsedSession struct {
 	RelationshipType RelationshipType
 	Cwd              string
 	FirstMessage     string
+	DisplayName      string
 	StartedAt        time.Time
 	EndedAt          time.Time
 	MessageCount     int

@@ -126,6 +126,10 @@ func NormalizeToolCategory(rawName string) string {
 	case "zencoder-rag-mcp__web_search":
 		return "Read"
 
+	// ChatGPT tools
+	case "code_interpreter":
+		return "Bash"
+
 	default:
 		// MCP tools may carry a server prefix (e.g.
 		// "Zencoder_subagent__ZencoderSubagent") or use

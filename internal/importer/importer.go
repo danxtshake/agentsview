@@ -1,0 +1,322 @@
+package importer
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"time"
+
+	"github.com/wesm/agentsview/internal/db"
+	"github.com/wesm/agentsview/internal/parser"
+)
+
+// ImportStats reports the outcome of an import operation.
+type ImportStats struct {
+	Imported int `json:"imported"`
+	Updated  int `json:"updated"`
+	Skipped  int `json:"skipped"`
+	Errors   int `json:"errors"`
+}
+
+// ImportClaudeAI reads a Claude.ai conversations.json export
+// and upserts each conversation into the store. Existing
+// sessions are updated (messages replaced); user-renamed
+// display names are preserved. Excluded (deleted) sessions
+// are counted as skipped.
+func ImportClaudeAI(
+	ctx context.Context,
+	store db.Store,
+	r io.Reader,
+	onProgress func(imported int),
+) (ImportStats, error) {
+	var stats ImportStats
+
+	err := parser.ParseClaudeAIExport(r, func(
+		result parser.ParseResult,
+	) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		status, err := upsertConversation(ctx, store, result)
+		if err != nil {
+			stats.Errors++
+			log.Printf(
+				"import: skipping %s: %v",
+				result.Session.ID, err,
+			)
+			return nil
+		}
+
+		switch status {
+		case importNew:
+			stats.Imported++
+		case importUpdated:
+			stats.Updated++
+		case importSkipped:
+			stats.Skipped++
+		}
+
+		if onProgress != nil {
+			total := stats.Imported + stats.Updated + stats.Skipped
+			onProgress(total)
+		}
+
+		return nil
+	})
+
+	return stats, err
+}
+
+type importStatus int
+
+const (
+	importNew importStatus = iota
+	importUpdated
+	importSkipped
+)
+
+func upsertConversation(
+	ctx context.Context,
+	store db.Store,
+	result parser.ParseResult,
+) (importStatus, error) {
+	s := result.Session
+
+	existing, err := store.GetSession(ctx, s.ID)
+	if err != nil {
+		return importNew, fmt.Errorf("checking session: %w", err)
+	}
+	isNew := existing == nil
+
+	// Preserve user-renamed display_name on re-import.
+	displayName := strPtr(s.DisplayName)
+	if !isNew && existing.DisplayName != nil {
+		importName := strPtr(s.DisplayName)
+		nameChanged := importName == nil ||
+			*existing.DisplayName != *importName
+		if nameChanged {
+			displayName = existing.DisplayName
+		}
+	}
+
+	sess := db.Session{
+		ID:               s.ID,
+		Project:          s.Project,
+		Machine:          s.Machine,
+		Agent:            string(s.Agent),
+		FirstMessage:     strPtr(s.FirstMessage),
+		DisplayName:      displayName,
+		StartedAt:        timeStr(s.StartedAt),
+		EndedAt:          timeStr(s.EndedAt),
+		MessageCount:     s.MessageCount,
+		UserMessageCount: s.UserMessageCount,
+	}
+
+	if err := store.UpsertSession(sess); err != nil {
+		if errors.Is(err, db.ErrSessionExcluded) {
+			return importSkipped, nil
+		}
+		return importNew, fmt.Errorf("upserting session: %w", err)
+	}
+
+	msgs := make([]db.Message, len(result.Messages))
+	for i, m := range result.Messages {
+		msgs[i] = db.Message{
+			SessionID:     s.ID,
+			Ordinal:       m.Ordinal,
+			Role:          string(m.Role),
+			Content:       m.Content,
+			Timestamp:     m.Timestamp.UTC().Format(time.RFC3339Nano),
+			ContentLength: m.ContentLength,
+		}
+	}
+
+	if err := store.ReplaceSessionMessages(s.ID, msgs); err != nil {
+		return importNew, fmt.Errorf("replacing messages: %w", err)
+	}
+
+	if isNew {
+		return importNew, nil
+	}
+	return importUpdated, nil
+}
+
+// assetResolverAdapter bridges the importer's AssetIndex / CopyAsset
+// pair to the parser.AssetResolver interface.
+type assetResolverAdapter struct {
+	index     AssetIndex
+	assetsDir string
+}
+
+func (a *assetResolverAdapter) Resolve(
+	pointer string,
+) (string, bool) {
+	return a.index.Resolve(pointer)
+}
+
+func (a *assetResolverAdapter) Copy(
+	srcPath string,
+) (string, error) {
+	return CopyAsset(srcPath, a.assetsDir)
+}
+
+// ImportChatGPT reads a ChatGPT export directory (containing
+// conversations-*.json files) and imports each conversation into
+// the store. Existing sessions are skipped to preserve archived
+// data.
+func ImportChatGPT(
+	ctx context.Context,
+	store db.Store,
+	dir string,
+	assetsDir string,
+	onProgress func(processed int),
+) (ImportStats, error) {
+	var stats ImportStats
+
+	index := BuildAssetIndex(dir)
+	resolver := &assetResolverAdapter{
+		index:     index,
+		assetsDir: assetsDir,
+	}
+
+	err := parser.ParseChatGPTExport(dir, resolver,
+		func(result parser.ParseResult) error {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			s := result.Session
+
+			existing, err := store.GetSession(ctx, s.ID)
+			if err != nil {
+				stats.Errors++
+				log.Printf(
+					"import: skipping %s: %v", s.ID, err,
+				)
+				return nil
+			}
+			if existing != nil {
+				stats.Skipped++
+				if onProgress != nil {
+					onProgress(stats.Imported + stats.Skipped)
+				}
+				return nil
+			}
+
+			sess := db.Session{
+				ID:               s.ID,
+				Project:          s.Project,
+				Machine:          s.Machine,
+				Agent:            string(s.Agent),
+				FirstMessage:     strPtr(s.FirstMessage),
+				DisplayName:      strPtr(s.DisplayName),
+				StartedAt:        timeStr(s.StartedAt),
+				EndedAt:          timeStr(s.EndedAt),
+				MessageCount:     s.MessageCount,
+				UserMessageCount: s.UserMessageCount,
+			}
+
+			if err := store.UpsertSession(sess); err != nil {
+				if errors.Is(err, db.ErrSessionExcluded) {
+					stats.Skipped++
+					if onProgress != nil {
+						onProgress(stats.Imported + stats.Skipped)
+					}
+					return nil
+				}
+				stats.Errors++
+				log.Printf(
+					"import: skipping %s: %v", s.ID, err,
+				)
+				return nil
+			}
+
+			msgs := make([]db.Message, len(result.Messages))
+			for i, m := range result.Messages {
+				msgs[i] = db.Message{
+					SessionID: s.ID,
+					Ordinal:   m.Ordinal,
+					Role:      string(m.Role),
+					Content:   m.Content,
+					Timestamp: m.Timestamp.UTC().Format(
+						time.RFC3339Nano,
+					),
+					HasThinking:   m.HasThinking,
+					HasToolUse:    m.HasToolUse,
+					ContentLength: m.ContentLength,
+					IsSystem:      m.IsSystem,
+					Model:         m.Model,
+					ToolCalls: convertToolCalls(
+						s.ID, m.ToolCalls,
+					),
+				}
+			}
+
+			if err := store.ReplaceSessionMessages(
+				s.ID, msgs,
+			); err != nil {
+				stats.Errors++
+				log.Printf(
+					"import: skipping messages for %s: %v",
+					s.ID, err,
+				)
+				return nil
+			}
+
+			stats.Imported++
+			if onProgress != nil {
+				onProgress(stats.Imported + stats.Skipped)
+			}
+			return nil
+		},
+	)
+
+	return stats, err
+}
+
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func timeStr(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	s := t.UTC().Format(time.RFC3339Nano)
+	return &s
+}
+
+func convertToolCalls(
+	sessionID string, parsed []parser.ParsedToolCall,
+) []db.ToolCall {
+	if len(parsed) == 0 {
+		return nil
+	}
+	calls := make([]db.ToolCall, len(parsed))
+	for i, tc := range parsed {
+		calls[i] = db.ToolCall{
+			SessionID: sessionID,
+			ToolName:  tc.ToolName,
+			Category:  tc.Category,
+			ToolUseID: tc.ToolUseID,
+			InputJSON: tc.InputJSON,
+			SkillName: tc.SkillName,
+		}
+		// Map execution output from ResultEvents to
+		// ResultContent for display in the UI.
+		for _, ev := range tc.ResultEvents {
+			if ev.Content != "" {
+				calls[i].ResultContent = ev.Content
+				calls[i].ResultContentLength = len(ev.Content)
+				break
+			}
+		}
+	}
+	return calls
+}

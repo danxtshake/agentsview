@@ -922,6 +922,46 @@ export async function emptyTrash(): Promise<{ deleted: number }> {
   return fetchJSON("/trash", { method: "DELETE" });
 }
 
+/* Import */
+
+export async function importClaudeAI(
+  file: File,
+): Promise<{ imported: number; updated: number; errors: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${getBase()}/import/claude-ai`,
+    authHeaders({ method: "POST", body: form }),
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error
+      ?? `Import failed (${res.status})`,
+    );
+  }
+  return res.json();
+}
+
+export async function importChatGPT(
+  file: File,
+): Promise<{ imported: number; updated: number; skipped: number; errors: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(
+    `${getBase()}/import/chatgpt`,
+    authHeaders({ method: "POST", body: form }),
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error
+      ?? `Import failed (${res.status})`,
+    );
+  }
+  return res.json();
+}
+
 /* Pins */
 
 export function listPins(): Promise<PinsResponse> {

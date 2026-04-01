@@ -78,6 +78,7 @@ type Config struct {
 	AuthToken            string         `json:"auth_token,omitempty" toml:"auth_token"`
 	RemoteAccess         bool           `json:"remote_access" toml:"remote_access"`
 	NoBrowser            bool           `json:"no_browser" toml:"no_browser"`
+	NoSync               bool           `json:"-" toml:"-"`
 	PG                   PGConfig       `json:"pg,omitempty" toml:"pg"`
 	WriteTimeout         time.Duration  `json:"-" toml:"-"`
 
@@ -534,6 +535,10 @@ func RegisterServeFlags(fs *flag.FlagSet) {
 		"no-browser", false,
 		"Don't open browser on startup",
 	)
+	fs.Bool(
+		"no-sync", false,
+		"Skip initial sync and disable background sync/file watching",
+	)
 }
 
 // applyFlags copies explicitly-set flags from fs into cfg.
@@ -569,6 +574,8 @@ func applyFlags(cfg *Config, fs *flag.FlagSet) {
 			cfg.Proxy.AllowedSubnets = splitFlagList(f.Value.String())
 		case "no-browser":
 			cfg.NoBrowser = f.Value.String() == "true"
+		case "no-sync":
+			cfg.NoSync = f.Value.String() == "true"
 		}
 	})
 }
