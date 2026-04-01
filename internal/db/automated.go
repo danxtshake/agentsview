@@ -4,14 +4,21 @@ import "strings"
 
 // automatedPrefixes are first_message prefixes that identify
 // automated (roborev) sessions. Matched case-sensitively.
+// Combined with the single-turn gate (user_message_count <= 1)
+// to avoid misclassifying interactive sessions.
 var automatedPrefixes = []string{
 	"You are a code reviewer.",
 	"You are a security code reviewer.",
 	"You are a design reviewer.",
 	"You are a code assistant. Your task is to address",
-	"## Analysis Request",
 	"You are a code review insights analyst.",
-	"# Fix Request\n",
+	"You are reviewing whether an implementation matches",
+	"You are a plan document reviewer.",
+	"You are a spec document reviewer.",
+	"You are summarizing a day of AI agent activity.",
+	"You are analyzing AI agent sessions.",
+	"## Analysis Request",
+	"# Fix Request",
 }
 
 // automatedSubstrings are patterns matched anywhere in the

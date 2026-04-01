@@ -58,21 +58,50 @@ func TestIsAutomatedSession(t *testing.T) {
 			true,
 		},
 
-		// Legacy fix request
+		// Fix request (various formats)
 		{
-			"FixRequestWithBody",
+			"FixRequestWithNewline",
 			"# Fix Request\nAn analysis was performed.",
 			true,
 		},
 		{
-			"FixRequestNoNewline",
-			"# Fix Request",
-			false,
+			"FixRequestWithDoubleSpace",
+			"# Fix Request  An analysis was performed.",
+			true,
 		},
 		{
-			"FixRequestUserHeading",
-			"# Fix Request for login flow",
-			false,
+			"FixRequestExact",
+			"# Fix Request",
+			true,
+		},
+
+		// Spec / plan review
+		{
+			"SpecReview",
+			"You are reviewing whether an implementation matches its specification.",
+			true,
+		},
+		{
+			"PlanReview",
+			"You are a plan document reviewer. Verify this plan.",
+			true,
+		},
+		{
+			"SpecDocReview",
+			"You are a spec document reviewer. Read the spec.",
+			true,
+		},
+
+		// Insights
+		{
+			"DaySummary",
+			"You are summarizing a day of AI agent activity. Provide a summary.",
+			true,
+		},
+		{
+			"SessionAnalysis",
+			"You are analyzing AI agent sessions. Provide analysis.",
+			true,
 		},
 
 		// Catch-all substring
