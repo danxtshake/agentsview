@@ -17,11 +17,11 @@ type claudeAIConversation struct {
 }
 
 type claudeAIMessage struct {
-	UUID      string              `json:"uuid"`
-	Text      string              `json:"text"`
-	Content   []claudeAIBlock     `json:"content"`
-	Sender    string              `json:"sender"`
-	CreatedAt string              `json:"created_at"`
+	UUID      string          `json:"uuid"`
+	Text      string          `json:"text"`
+	Content   []claudeAIBlock `json:"content"`
+	Sender    string          `json:"sender"`
+	CreatedAt string          `json:"created_at"`
 }
 
 // claudeAIBlock represents a content block within a message.
@@ -99,8 +99,8 @@ func assembleClaudeAIContent(
 				parts = append(parts,
 					"[Thinking]\n"+b.Thinking+"\n[/Thinking]")
 			}
-		// tool_use, tool_result, voice_note, token_budget
-		// are metadata blocks — skip for display content.
+			// tool_use, tool_result, voice_note, token_budget
+			// are metadata blocks — skip for display content.
 		}
 	}
 

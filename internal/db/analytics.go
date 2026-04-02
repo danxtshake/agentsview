@@ -42,14 +42,14 @@ func queryChunked(
 
 // AnalyticsFilter is the shared filter for all analytics queries.
 type AnalyticsFilter struct {
-	From            string // ISO date YYYY-MM-DD, inclusive
-	To              string // ISO date YYYY-MM-DD, inclusive
-	Machine         string // optional machine filter
-	Project         string // optional project filter
-	Agent           string // optional agent filter
-	Timezone        string // IANA timezone for day bucketing
-	DayOfWeek       *int   // nil = all, 0=Mon, 6=Sun (ISO)
-	Hour            *int   // nil = all, 0-23
+	From             string // ISO date YYYY-MM-DD, inclusive
+	To               string // ISO date YYYY-MM-DD, inclusive
+	Machine          string // optional machine filter
+	Project          string // optional project filter
+	Agent            string // optional agent filter
+	Timezone         string // IANA timezone for day bucketing
+	DayOfWeek        *int   // nil = all, 0=Mon, 6=Sun (ISO)
+	Hour             *int   // nil = all, 0-23
 	MinUserMessages  int    // user_message_count >= N
 	ExcludeOneShot   bool   // exclude sessions with user_message_count <= 1
 	ExcludeAutomated bool   // exclude automated (roborev) sessions

@@ -190,22 +190,22 @@ func (db *DB) DecodeCursor(s string) (SessionCursor, error) {
 
 // SessionFilter specifies how to query sessions.
 type SessionFilter struct {
-	Project         string
-	ExcludeProject  string // exclude sessions with this project name
-	Machine         string
-	Agent           string
-	Date            string // exact date YYYY-MM-DD
-	DateFrom        string // range start (inclusive)
-	DateTo          string // range end (inclusive)
-	ActiveSince     string // ISO-8601 timestamp; filters on most recent activity
-	MinMessages     int    // message_count >= N (0 = no filter)
-	MaxMessages     int    // message_count <= N (0 = no filter)
-	MinUserMessages int    // user_message_count >= N (0 = no filter)
+	Project          string
+	ExcludeProject   string // exclude sessions with this project name
+	Machine          string
+	Agent            string
+	Date             string // exact date YYYY-MM-DD
+	DateFrom         string // range start (inclusive)
+	DateTo           string // range end (inclusive)
+	ActiveSince      string // ISO-8601 timestamp; filters on most recent activity
+	MinMessages      int    // message_count >= N (0 = no filter)
+	MaxMessages      int    // message_count <= N (0 = no filter)
+	MinUserMessages  int    // user_message_count >= N (0 = no filter)
 	ExcludeOneShot   bool   // exclude sessions with user_message_count <= 1
 	ExcludeAutomated bool   // exclude sessions where is_automated = 1
 	IncludeChildren  bool   // include subagent sessions (for sidebar grouping)
-	Cursor          string // opaque cursor from previous page
-	Limit           int
+	Cursor           string // opaque cursor from previous page
+	Limit            int
 }
 
 // SessionPage is a page of session results.
