@@ -69,8 +69,8 @@ or diagnostics are collected or sent anywhere.
 - The optional PostgreSQL sync is explicit and user-initiated (`pg push`),
   connecting only to a server you configure
 
-The only outbound network request is an update check that fetches release
-metadata from GitHub on startup. This sends no analytics or session data. The
+The only automatic outbound request is an update check on startup that fetches
+release metadata from GitHub. This sends no analytics or session data. The
 desktop app and the web UI both perform this check. To disable it:
 
 - **Desktop app**: set `AGENTSVIEW_DESKTOP_AUTOUPDATE=0`
@@ -288,10 +288,11 @@ make e2e            # Playwright E2E tests
 make install-hooks  # install pre-commit hooks via prek
 ```
 
-Pre-commit hooks are managed with [prek](https://github.com/j178/prek). Run
-`brew install prek && make install-hooks` after cloning. The hook runs
-`make lint` on every commit, auto-fixing formatting issues. If the hook rewrites
-files, re-stage and re-commit.
+Pre-commit hooks are managed with [prek](https://github.com/j178/prek) and
+require [uv](https://docs.astral.sh/uv/) for the Markdown formatting hook. Run
+`brew install prek uv && make install-hooks` after cloning. The hooks run
+`make lint` and `mdformat` on every commit, auto-fixing formatting issues. If a
+hook rewrites files, re-stage and re-commit.
 
 ## Desktop Development
 
