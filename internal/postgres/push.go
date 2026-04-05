@@ -49,12 +49,11 @@ type PushResult struct {
 // unfiltered sessions to be skipped. Instead, filtered
 // pushes rely on fingerprints for incrementality: each run
 // re-queries all sessions since the last unfiltered push
-// and skips those whose fingerprint hasn't changed. This
-// means the query window grows between unfiltered pushes.
-// If filtered push is the normal operating mode (e.g. set
-// in config and running on a cron), run an occasional
-// unfiltered push to advance the watermark and bound the
-// query window.
+// and skips those whose fingerprint hasn't changed. The
+// query window grows between unfiltered pushes, but
+// fingerprint matching keeps the actual PG writes minimal.
+// Run an occasional unfiltered push (or use --all-projects)
+// to advance the watermark and bound the query window.
 //
 // Known limitation: sessions that are permanently deleted
 // from SQLite (via prune) are not propagated as deletions
@@ -226,17 +225,24 @@ func (s *Sync) Push(
 	})
 
 	if len(sessions) == 0 {
-		// Filtered pushes must not advance the global
-		// watermark but should still update fingerprints
-		// so repeated filtered runs stay incremental.
-		// Skip when lastPush is empty (--full/PG reset).
-		if s.isFiltered() && lastPush != "" {
+		if s.isFiltered() {
+			// Filtered pushes must not advance the global
+			// watermark but should still update fingerprints
+			// so repeated filtered runs stay incremental.
+			// Use cutoff as the boundary key when lastPush
+			// is empty (--full/PG reset) so that the next
+			// filtered run can match fingerprints.
+			boundaryKey := lastPush
+			if boundaryKey == "" {
+				boundaryKey = cutoff
+			}
 			if err := writePushBoundaryState(
-				s.local, lastPush, sessions, priorFingerprints,
+				s.local, boundaryKey, sessions,
+				priorFingerprints,
 			); err != nil {
 				return result, err
 			}
-		} else if !s.isFiltered() {
+		} else {
 			if err := finalizePushState(
 				s.local, cutoff, sessions, nil,
 			); err != nil {
@@ -288,18 +294,19 @@ func (s *Sync) Push(
 		// sessions so subsequent filtered runs stay
 		// incremental, but do not advance the global
 		// watermark past sessions from other projects.
-		// Only write fingerprints when a watermark exists;
-		// an empty watermark means --full or PG reset
-		// cleared the state, and writing fingerprints
-		// would create stale entries that survive a
-		// subsequent PG reset undetected.
-		if lastPush != "" {
-			if err := writePushBoundaryState(
-				s.local, lastPush, pushed,
-				priorFingerprints,
-			); err != nil {
-				return result, err
-			}
+		// Use cutoff as the boundary key when lastPush is
+		// empty (--full/PG reset) so the next filtered
+		// run can match fingerprints instead of
+		// re-pushing everything.
+		boundaryKey := lastPush
+		if boundaryKey == "" {
+			boundaryKey = cutoff
+		}
+		if err := writePushBoundaryState(
+			s.local, boundaryKey, pushed,
+			priorFingerprints,
+		); err != nil {
+			return result, err
 		}
 	} else {
 		// When all sessions succeeded, advance the watermark
