@@ -557,22 +557,21 @@ fn desktop_redirect_url(port: u16) -> String {
 /// JS pings the backend and reloads on failure — covers
 /// alive-but-disconnected WebViews.
 fn recover_webview(window: &WebviewWindow, port: u16) {
-    // Read the auth token from localStorage (same key the frontend
-    // API client uses) so the health probe succeeds in authenticated
-    // remote-access mode.
-    // Only reload on network failure, timeout, or 5xx. A 401/403
-    // means the backend is alive — auth recovery is handled by the
-    // frontend, not by reloading.
-    // On failure, navigate to the absolute backend URL (not
-    // location.reload) so recovery works even if the sidecar
-    // restarted on a different port.
+    // Probe the sidecar at its absolute URL (not relative) so we
+    // always hit the correct port even if the WebView is still on
+    // a stale origin from a previous sidecar instance. No auth
+    // header — the local sidecar doesn't require it, and sending
+    // one to a random service on the old port would leak the token.
+    //
+    // Uses AbortController+setTimeout instead of AbortSignal.timeout
+    // for compatibility with older WebKit (macOS 12 / Safari 15).
+    let probe = format!("http://{HOST}:{port}/api/v1/version");
     let target = desktop_redirect_url(port);
     let health_js = format!(
         "(function(){{\
-        var t=localStorage.getItem('agentsview-auth-token')||'';\
-        var h={{signal:AbortSignal.timeout(3000)}};\
-        if(t)h.headers={{'Authorization':'Bearer '+t}};\
-        fetch('/api/v1/version',h)\
+        var c=new AbortController();\
+        setTimeout(function(){{c.abort()}},3000);\
+        fetch('{probe}',{{signal:c.signal}})\
         .then(function(r){{if(r.status>=500)throw r}})\
         .catch(function(){{location.href='{target}'}})\
         }})()"

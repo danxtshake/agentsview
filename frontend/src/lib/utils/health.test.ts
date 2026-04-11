@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setupVisibilityHealthCheck } from "./health.js";
-import { setAuthToken } from "../api/client.js";
+import { setAuthToken, setServerUrl } from "../api/client.js";
 
 describe("setupVisibilityHealthCheck", () => {
   let originalFetch: typeof globalThis.fetch;
@@ -14,11 +14,13 @@ describe("setupVisibilityHealthCheck", () => {
       writable: true,
     });
     setAuthToken("");
+    setServerUrl("");
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     setAuthToken("");
+    setServerUrl("");
     vi.restoreAllMocks();
   });
 
@@ -168,8 +170,7 @@ describe("setupVisibilityHealthCheck", () => {
     cleanup();
   });
 
-  it("skips health check in desktop mode", async () => {
-    // Simulate desktop mode by setting ?desktop in URL
+  it("skips health check in desktop mode with local sidecar", async () => {
     Object.defineProperty(window, "location", {
       value: { reload: reloadSpy, search: "?desktop=1" },
       writable: true,
@@ -180,6 +181,21 @@ describe("setupVisibilityHealthCheck", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(reloadSpy).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("keeps health check in desktop mode with remote server", async () => {
+    Object.defineProperty(window, "location", {
+      value: { reload: reloadSpy, search: "?desktop=1" },
+      writable: true,
+    });
+    setServerUrl("http://remote:8080");
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("net"));
+    const cleanup = setupVisibilityHealthCheck(() => "/api/v1");
+    fireVisible();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(globalThis.fetch).toHaveBeenCalled();
+    expect(reloadSpy).toHaveBeenCalledOnce();
     cleanup();
   });
 });
