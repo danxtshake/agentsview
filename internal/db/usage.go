@@ -210,6 +210,14 @@ WHERE m.token_usage != ''
 			continue
 		}
 
+		// token_usage is written by our parsers and never by
+		// user input, so we trust it to be valid JSON. gjson
+		// is permissive enough that a truncated-tail row still
+		// yields its leading fields; a fully garbage row would
+		// return zeros, but that path is not reachable from
+		// any known parser. Skipping gjson.Valid here preserves
+		// the hot-path speedup (O(n) per row → not free on a
+		// 310k-row scan).
 		usage := gjson.Parse(tokenJSON)
 		inputTok := int(usage.Get("input_tokens").Int())
 		outputTok := int(usage.Get("output_tokens").Int())
