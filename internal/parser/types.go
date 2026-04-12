@@ -462,6 +462,14 @@ type ParsedMessage struct {
 	HasContextTokens bool
 	HasOutputTokens  bool
 
+	// ClaudeMessageID and ClaudeRequestID hold the provider's
+	// per-response identifiers. Used for cross-file / cross-session
+	// deduplication when summing token usage, matching ccusage's
+	// `${messageId}:${requestId}` hash. Only populated by the
+	// Claude parser; empty for all other agents.
+	ClaudeMessageID string
+	ClaudeRequestID string
+
 	// tokenPresenceKnown marks per-message token coverage as
 	// parser-owned and authoritative.
 	tokenPresenceKnown bool
