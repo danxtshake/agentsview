@@ -52,6 +52,26 @@ func runUsage(args []string) {
 // full history when users usually want recent spend.
 const defaultUsageDays = 30
 
+// resolveDefaultSince returns the effective --since value,
+// applying a 30-day lookback only when the caller gave no
+// explicit range at all. If --until is set we leave --since
+// empty so "everything up to --until" still works; otherwise
+// a bare --until would produce From > To and empty results.
+func resolveDefaultSince(
+	since, until string, all bool, now time.Time, tz string,
+) string {
+	if since != "" || until != "" || all {
+		return since
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.Local
+	}
+	return now.In(loc).
+		AddDate(0, 0, -(defaultUsageDays - 1)).
+		Format("2006-01-02")
+}
+
 func runUsageDaily(args []string) {
 	fs := flag.NewFlagSet("usage daily", flag.ExitOnError)
 	jsonOut := fs.Bool("json", false,
@@ -88,18 +108,9 @@ func runUsageDaily(args []string) {
 		tz = localTimezone()
 	}
 
-	// Apply default 30-day window if no explicit range and
-	// --all was not requested.
-	effectiveSince := *since
-	if effectiveSince == "" && !*all {
-		loc, err := time.LoadLocation(tz)
-		if err != nil {
-			loc = time.Local
-		}
-		effectiveSince = time.Now().In(loc).
-			AddDate(0, 0, -(defaultUsageDays - 1)).
-			Format("2006-01-02")
-	}
+	effectiveSince := resolveDefaultSince(
+		*since, *until, *all, time.Now(), tz,
+	)
 
 	filter := db.UsageFilter{
 		From:     effectiveSince,
