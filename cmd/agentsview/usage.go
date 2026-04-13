@@ -176,10 +176,11 @@ func runUsageStatusline(args []string) {
 	}
 
 	if *agent != "" {
-		fmt.Printf("$%.2f today (%s)\n",
-			result.Totals.TotalCost, *agent)
+		fmt.Printf("%s today (%s)\n",
+			fmtCost(result.Totals.TotalCost), *agent)
 	} else {
-		fmt.Printf("$%.2f today\n", result.Totals.TotalCost)
+		fmt.Printf("%s today\n",
+			fmtCost(result.Totals.TotalCost))
 	}
 }
 
