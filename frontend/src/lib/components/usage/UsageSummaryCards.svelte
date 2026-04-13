@@ -25,12 +25,18 @@
     return `${(v * 100).toFixed(1)}%`;
   }
 
-  const totalTokens = $derived.by(() => {
-    const s = usage.summary;
-    if (!s) return 0;
-    const t = s.totals;
-    return t.inputTokens + t.outputTokens
-      + t.cacheCreationTokens + t.cacheReadTokens;
+  const inputTokens = $derived(
+    usage.summary?.totals.inputTokens ?? 0,
+  );
+
+  const outputTokens = $derived(
+    usage.summary?.totals.outputTokens ?? 0,
+  );
+
+  const cachedTokens = $derived.by(() => {
+    const t = usage.summary?.totals;
+    if (!t) return 0;
+    return t.cacheCreationTokens + t.cacheReadTokens;
   });
 
   const dailyBurn = $derived.by(() => {
@@ -79,8 +85,14 @@
       featured: true,
     },
     {
-      label: "Tokens",
-      value: () => fmtTokens(totalTokens),
+      label: "Input Tokens",
+      value: () => fmtTokens(inputTokens),
+      sub: () =>
+        cachedTokens > 0 ? `+${fmtTokens(cachedTokens)} cached` : "",
+    },
+    {
+      label: "Output Tokens",
+      value: () => fmtTokens(outputTokens),
     },
     {
       label: "Daily Burn",
