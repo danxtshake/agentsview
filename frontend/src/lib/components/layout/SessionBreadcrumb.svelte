@@ -287,7 +287,10 @@
   }
 
   const canResume = $derived(
-    session ? supportsResume(session.agent) : false,
+    session
+      ? supportsResume(session.agent) &&
+          session.machine === "local"
+      : false,
   );
 
   const terminalOpeners = $derived(
