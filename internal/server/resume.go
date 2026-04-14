@@ -90,6 +90,15 @@ func (s *Server) handleResumeSession(
 		return
 	}
 
+	// Remote sessions cannot be resumed locally.
+	if session.Machine != "local" {
+		writeError(
+			w, http.StatusBadRequest,
+			"cannot resume remote session",
+		)
+		return
+	}
+
 	// Check if this agent supports resumption.
 	tmpl, ok := resumeAgents[string(session.Agent)]
 	if !ok {
