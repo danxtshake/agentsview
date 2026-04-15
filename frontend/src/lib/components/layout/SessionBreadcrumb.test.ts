@@ -240,12 +240,10 @@ describe("SessionBreadcrumb", () => {
 
     await tick();
 
-    // The actions dropdown should not appear for remote
-    // sessions (no resume, no copy-dir, no open-in).
-    const actionBtn = document.querySelector(
-      ".actions-button",
-    );
-    expect(actionBtn).toBeNull();
+    // The dropdown trigger (.resume-btn) should not appear
+    // for remote sessions (no resume, no copy-dir, no open-in).
+    const resumeBtn = document.querySelector(".resume-btn");
+    expect(resumeBtn).toBeNull();
 
     unmount(component);
   });
