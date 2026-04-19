@@ -24,8 +24,8 @@ type StatsFilter struct {
 
 // GetSessionStats computes the v1 session-stats JSON response.
 // Sections not yet wired (adoption, cache_economics, temporal,
-// outcomes, agent_portfolio) remain at their zero values until the
-// tasks that implement them land.
+// outcomes) remain at their zero values until the tasks that
+// implement them land.
 func (db *DB) GetSessionStats(
 	ctx context.Context, f StatsFilter,
 ) (*SessionStats, error) {
@@ -79,6 +79,8 @@ func (db *DB) GetSessionStats(
 			"computing tool/model mix: %w", err,
 		)
 	}
+
+	computeAgentPortfolio(stats, rows)
 
 	return stats, nil
 }
@@ -672,4 +674,40 @@ func safeMean(sum float64, n int) float64 {
 		return 0
 	}
 	return sum / float64(n)
+}
+
+// computeAgentPortfolio fills SessionStats.AgentPortfolio by folding
+// per-session counts and output tokens into one bucket per agent.
+// Maps are always non-nil so the JSON output keeps stable {} values
+// when the window contains no sessions.
+func computeAgentPortfolio(s *SessionStats, rows []sessionStatsRow) {
+	bySessions := map[string]int{}
+	byMessages := map[string]int{}
+	byTokens := map[string]int64{}
+	for _, r := range rows {
+		bySessions[r.agent]++
+		byMessages[r.agent] += r.messageCount
+		byTokens[r.agent] += r.totalOutputTokens
+	}
+	s.AgentPortfolio.BySessions = bySessions
+	s.AgentPortfolio.ByMessages = byMessages
+	s.AgentPortfolio.ByTokens = byTokens
+	s.AgentPortfolio.Primary = pickPrimaryAgent(bySessions)
+}
+
+// pickPrimaryAgent returns the agent with the highest session count.
+// Ties are broken by choosing the lexicographically smallest agent
+// name — a stable rule so downstream tools that golden-compare the
+// JSON output see deterministic values regardless of Go's randomised
+// map iteration order. Returns "" for an empty map.
+func pickPrimaryAgent(bySessions map[string]int) string {
+	best := ""
+	bestN := -1
+	for agent, n := range bySessions {
+		if n > bestN || (n == bestN && agent < best) {
+			best = agent
+			bestN = n
+		}
+	}
+	return best
 }

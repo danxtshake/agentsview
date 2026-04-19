@@ -1144,3 +1144,213 @@ func TestGetSessionStats_ToolMixAndModelMix_Empty(t *testing.T) {
 		t.Errorf("ModelMix.ByTokens: got nil want non-nil map")
 	}
 }
+
+// AgentPortfolio aggregates session, message, and output-token counts
+// per agent across the window. Primary names the agent with the most
+// sessions, with alphabetical tie-breaking for determinism.
+func TestGetSessionStats_AgentPortfolio(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	// 3 claude sessions: messages 5,7,10 → 22; tokens 100,200,300 → 600.
+	claude := []struct {
+		id     string
+		msgs   int
+		tokens int
+	}{
+		{"cl1", 5, 100},
+		{"cl2", 7, 200},
+		{"cl3", 10, 300},
+	}
+	for _, c := range claude {
+		insertSessionFixture(t, d, sessionFixture{
+			id: c.id, agent: "claude", userMsgs: 3,
+			messageCount:   c.msgs,
+			totalOutputTok: c.tokens,
+			startedAt:      hoursAgo(5),
+		})
+	}
+	// 2 codex sessions: messages 3,6 → 9; tokens 50,100 → 150.
+	codex := []struct {
+		id     string
+		msgs   int
+		tokens int
+	}{
+		{"cx1", 3, 50},
+		{"cx2", 6, 100},
+	}
+	for _, c := range codex {
+		insertSessionFixture(t, d, sessionFixture{
+			id: c.id, agent: "codex", userMsgs: 3,
+			messageCount:   c.msgs,
+			totalOutputTok: c.tokens,
+			startedAt:      hoursAgo(5),
+		})
+	}
+	// 1 cursor session: messages 4; tokens 80.
+	insertSessionFixture(t, d, sessionFixture{
+		id: "cu1", agent: "cursor", userMsgs: 3,
+		messageCount:   4,
+		totalOutputTok: 80,
+		startedAt:      hoursAgo(5),
+	})
+
+	stats, err := d.GetSessionStats(ctx, StatsFilter{Since: "28d"})
+	if err != nil {
+		t.Fatalf("GetSessionStats: %v", err)
+	}
+
+	ap := stats.AgentPortfolio
+	wantSessions := map[string]int{"claude": 3, "codex": 2, "cursor": 1}
+	if len(ap.BySessions) != len(wantSessions) {
+		t.Errorf("BySessions len: got %d want %d (got=%v)",
+			len(ap.BySessions), len(wantSessions), ap.BySessions)
+	}
+	for k, v := range wantSessions {
+		if ap.BySessions[k] != v {
+			t.Errorf("BySessions[%q]: got %d want %d",
+				k, ap.BySessions[k], v)
+		}
+	}
+
+	wantMessages := map[string]int{"claude": 22, "codex": 9, "cursor": 4}
+	for k, v := range wantMessages {
+		if ap.ByMessages[k] != v {
+			t.Errorf("ByMessages[%q]: got %d want %d",
+				k, ap.ByMessages[k], v)
+		}
+	}
+
+	wantTokens := map[string]int64{"claude": 600, "codex": 150, "cursor": 80}
+	for k, v := range wantTokens {
+		if ap.ByTokens[k] != v {
+			t.Errorf("ByTokens[%q]: got %d want %d",
+				k, ap.ByTokens[k], v)
+		}
+	}
+
+	if ap.Primary != "claude" {
+		t.Errorf("Primary: got %q want claude", ap.Primary)
+	}
+}
+
+// Tie-break: two agents at equal session counts must resolve to the
+// lexicographically smallest agent name. claude vs codex both at 2 →
+// claude wins because "claude" < "codex".
+func TestGetSessionStats_AgentPortfolio_TieBreak(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	for _, id := range []string{"cl1", "cl2"} {
+		insertSessionFixture(t, d, sessionFixture{
+			id: id, agent: "claude", userMsgs: 3,
+			messageCount: 4, totalOutputTok: 100,
+			startedAt: hoursAgo(5),
+		})
+	}
+	for _, id := range []string{"cx1", "cx2"} {
+		insertSessionFixture(t, d, sessionFixture{
+			id: id, agent: "codex", userMsgs: 3,
+			messageCount: 4, totalOutputTok: 100,
+			startedAt: hoursAgo(5),
+		})
+	}
+	insertSessionFixture(t, d, sessionFixture{
+		id: "cu1", agent: "cursor", userMsgs: 3,
+		messageCount: 4, totalOutputTok: 100,
+		startedAt: hoursAgo(5),
+	})
+
+	stats, err := d.GetSessionStats(ctx, StatsFilter{Since: "28d"})
+	if err != nil {
+		t.Fatalf("GetSessionStats: %v", err)
+	}
+	if stats.AgentPortfolio.BySessions["claude"] != 2 ||
+		stats.AgentPortfolio.BySessions["codex"] != 2 {
+		t.Fatalf("precondition: claude/codex must tie at 2 (got %v)",
+			stats.AgentPortfolio.BySessions)
+	}
+	if stats.AgentPortfolio.Primary != "claude" {
+		t.Errorf("Primary under tie: got %q want claude "+
+			"(alphabetical tie-break)",
+			stats.AgentPortfolio.Primary)
+	}
+}
+
+// Empty-window case: AgentPortfolio maps must be non-nil (JSON encodes
+// {} not null) and Primary must be empty without crashing.
+func TestGetSessionStats_AgentPortfolio_Empty(t *testing.T) {
+	d := testDB(t)
+	ctx := context.Background()
+
+	stats, err := d.GetSessionStats(ctx, StatsFilter{Since: "28d"})
+	if err != nil {
+		t.Fatalf("GetSessionStats: %v", err)
+	}
+	ap := stats.AgentPortfolio
+	if ap.BySessions == nil {
+		t.Errorf("BySessions: got nil want non-nil map")
+	}
+	if ap.ByMessages == nil {
+		t.Errorf("ByMessages: got nil want non-nil map")
+	}
+	if ap.ByTokens == nil {
+		t.Errorf("ByTokens: got nil want non-nil map")
+	}
+	if len(ap.BySessions) != 0 || len(ap.ByMessages) != 0 ||
+		len(ap.ByTokens) != 0 {
+		t.Errorf("empty window: got non-empty maps %+v", ap)
+	}
+	if ap.Primary != "" {
+		t.Errorf("Primary: got %q want empty", ap.Primary)
+	}
+}
+
+func TestPickPrimaryAgent(t *testing.T) {
+	cases := []struct {
+		name  string
+		input map[string]int
+		want  string
+	}{
+		{
+			name:  "empty map",
+			input: map[string]int{},
+			want:  "",
+		},
+		{
+			name:  "single agent",
+			input: map[string]int{"claude": 5},
+			want:  "claude",
+		},
+		{
+			name:  "strict max wins",
+			input: map[string]int{"claude": 3, "codex": 2, "cursor": 1},
+			want:  "claude",
+		},
+		{
+			name:  "alphabetical tie-break across two",
+			input: map[string]int{"codex": 2, "claude": 2},
+			want:  "claude",
+		},
+		{
+			name: "alphabetical tie-break across three",
+			input: map[string]int{
+				"codex": 2, "claude": 2, "cursor": 2,
+			},
+			want: "claude",
+		},
+		{
+			name:  "tie below max ignored",
+			input: map[string]int{"codex": 3, "claude": 2, "cursor": 2},
+			want:  "codex",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := pickPrimaryAgent(c.input); got != c.want {
+				t.Errorf("pickPrimaryAgent(%v): got %q want %q",
+					c.input, got, c.want)
+			}
+		})
+	}
+}
