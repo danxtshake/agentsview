@@ -184,6 +184,14 @@ func ensureFreshData(
 
 	ctx := context.Background()
 
+	// Silence engine worker log.Printf lines (e.g. "db:
+	// InsertMessages (N msgs)") for both branches so --json and
+	// statusline output stay clean. Progress goes to stderr
+	// below to stay out of stdout-bound payloads.
+	origLog := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(origLog)
+
 	if database.NeedsResync() {
 		engine := sync.NewEngine(database, sync.EngineConfig{
 			AgentDirs: appCfg.AgentDirs,
@@ -191,7 +199,9 @@ func ensureFreshData(
 		})
 		fmt.Fprintln(os.Stderr,
 			"Data version changed, running full resync...")
-		engine.ResyncAll(ctx, nil)
+		t := time.Now()
+		stats := engine.ResyncAll(ctx, printSyncProgressStderr)
+		printSyncSummaryStderr(stats, t)
 		return
 	}
 
@@ -213,16 +223,45 @@ func ensureFreshData(
 		since = since.Add(-quickSyncMargin)
 	}
 
-	// Silence engine progress and incremental-parse logging
-	// so --json and statusline output stay clean. The engine
-	// emits unconditional log.Printf calls from worker paths
-	// that aren't gated by a verbose flag, so redirect the
-	// global logger for the duration of the sync.
-	origLog := log.Writer()
-	log.SetOutput(io.Discard)
-	defer log.SetOutput(origLog)
-
 	engine.SyncAllSince(ctx, since, func(sync.Progress) {})
+}
+
+// printSyncProgressStderr mirrors printSyncProgress but writes
+// to stderr so it does not pollute stdout-bound JSON or
+// statusline output from the usage commands.
+func printSyncProgressStderr(p sync.Progress) {
+	if p.SessionsTotal > 0 {
+		fmt.Fprintf(os.Stderr,
+			"\r  %d/%d sessions (%.0f%%) · %d messages",
+			p.SessionsDone, p.SessionsTotal,
+			p.Percent(), p.MessagesIndexed,
+		)
+	}
+}
+
+// printSyncSummaryStderr mirrors printSyncSummary but writes to
+// stderr, for the same reason as printSyncProgressStderr.
+func printSyncSummaryStderr(stats sync.SyncStats, t time.Time) {
+	summary := fmt.Sprintf(
+		"\nSync complete: %d sessions synced",
+		stats.Synced,
+	)
+	if stats.OrphanedCopied > 0 {
+		summary += fmt.Sprintf(
+			", %d archived sessions preserved",
+			stats.OrphanedCopied,
+		)
+	}
+	if stats.Failed > 0 {
+		summary += fmt.Sprintf(", %d failed", stats.Failed)
+	}
+	summary += fmt.Sprintf(
+		" in %s\n", time.Since(t).Round(time.Millisecond),
+	)
+	fmt.Fprint(os.Stderr, summary)
+	for _, w := range stats.Warnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+	}
 }
 
 // seedPricing ensures fallback rates are present in
