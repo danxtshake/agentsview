@@ -47,6 +47,14 @@ func AggregateLog(
 	out, err := cmd.Output()
 	if err != nil {
 		msg := strings.TrimSpace(stderr.String())
+		// An empty repo (initialized but no commits, or a worktree
+		// pointed at an unborn branch) is a normal state, not an
+		// error — there is simply no log to aggregate. Treat as a
+		// zero result so callers don't spam the user with errors
+		// for every checkout that hasn't been used yet.
+		if isEmptyRepoErr(msg) {
+			return LogResult{}, nil
+		}
 		if msg == "" {
 			return LogResult{}, fmt.Errorf("git log in %s: %w", repo, err)
 		}
@@ -55,6 +63,17 @@ func AggregateLog(
 		)
 	}
 	return parseNumstat(out), nil
+}
+
+// isEmptyRepoErr reports whether a `git log` stderr message indicates
+// the repo has no commits on the current branch — i.e., not a real
+// failure, just nothing to aggregate. Both phrasings below have been
+// stable across modern git versions; the second one shows up when
+// HEAD points at a ref that doesn't yet exist (a freshly-created
+// worktree on an unborn branch).
+func isEmptyRepoErr(stderr string) bool {
+	return strings.Contains(stderr, "does not have any commits yet") ||
+		strings.Contains(stderr, "bad default revision 'HEAD'")
 }
 
 // parseNumstat walks `git log --numstat --format=%H` output and aggregates

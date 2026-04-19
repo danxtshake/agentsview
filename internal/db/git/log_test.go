@@ -176,6 +176,28 @@ func TestAggregateLog_BadRepoReturnsError(t *testing.T) {
 	}
 }
 
+// TestAggregateLog_EmptyRepoReturnsZero covers the "git init but no
+// commits yet" case (e.g., a freshly-created worktree). git exits 128
+// with "your current branch 'main' does not have any commits yet";
+// this is normal state, not an error, so AggregateLog must return a
+// zero LogResult and nil error rather than spamming the user log.
+func TestAggregateLog_EmptyRepoReturnsZero(t *testing.T) {
+	skipIfNoGit(t)
+	repo := initRepo(t) // creates the repo but never commits
+
+	got, err := AggregateLog(
+		context.Background(),
+		repo, "test@example.com",
+		"1970-01-01T00:00:00Z", "2099-01-01T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("AggregateLog on empty repo: got error %v, want nil", err)
+	}
+	if got != (LogResult{}) {
+		t.Fatalf("AggregateLog on empty repo = %+v, want zero", got)
+	}
+}
+
 func TestAuthorEmail_LocalConfig(t *testing.T) {
 	skipIfNoGit(t)
 	repo := t.TempDir()
