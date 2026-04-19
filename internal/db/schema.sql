@@ -273,3 +273,13 @@ CREATE TABLE IF NOT EXISTS model_pricing (
     updated_at       TEXT NOT NULL
         DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+-- Git aggregation TTL cache: memoizes `git log --numstat` and
+-- `gh pr list` results per (repo, author, window) tuple so
+-- repeated `session stats` invocations don't re-shell out.
+CREATE TABLE IF NOT EXISTS git_cache (
+    cache_key   TEXT PRIMARY KEY,          -- sha256(repo|author|since|until|kind)
+    kind        TEXT NOT NULL,             -- 'log' | 'pr'
+    payload     TEXT NOT NULL,             -- JSON-encoded result
+    computed_at TEXT NOT NULL              -- RFC3339
+);
