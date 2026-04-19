@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strconv"
@@ -1292,8 +1293,12 @@ func (db *DB) computeOutcomeStats(
 			ctx, cache, repo, email, since, until, time.Hour,
 		)
 		if err != nil {
-			// Swallow per-repo errors: a bad repo should not erase
-			// every other repo's contribution to the totals.
+			// Per-repo failures are logged but don't abort
+			// aggregation across other repos.
+			log.Printf(
+				"computeOutcomeStats: repo=%s op=log err=%v",
+				repo, err,
+			)
 			continue
 		}
 		out.ReposActive++
@@ -1307,7 +1312,12 @@ func (db *DB) computeOutcomeStats(
 				ctx, cache, repo, since, until,
 				f.GHToken, time.Hour,
 			)
-			if err == nil && prRes != nil {
+			if err != nil {
+				log.Printf(
+					"computeOutcomeStats: repo=%s op=pr err=%v",
+					repo, err,
+				)
+			} else if prRes != nil {
 				addPtr(&out.PRsOpened, prRes.Opened)
 				addPtr(&out.PRsMerged, prRes.Merged)
 			}
