@@ -1,6 +1,10 @@
 package db
 
-import "testing"
+import (
+	"slices"
+	"strings"
+	"testing"
+)
 
 func TestIsAutomatedSession(t *testing.T) {
 	tests := []struct {
@@ -214,5 +218,99 @@ func TestIsAutomatedSession(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestNormalizeUserPrefixes(t *testing.T) {
+	long := strings.Repeat("a", 1025)
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"Nil", nil, nil},
+		{"Empty", []string{}, nil},
+		{"AllWhitespace", []string{"   ", "\t\n"}, nil},
+		{"TrimsEachEntry", []string{"  hello  ", "world\n"}, []string{"hello", "world"}},
+		{"DropEmpty", []string{"hello", "", "  ", "world"}, []string{"hello", "world"}},
+		{"DropTooLong", []string{"hello", long}, []string{"hello"}},
+		{"DropDuplicate", []string{"a", "b", "a"}, []string{"a", "b"}},
+		{"DropDuplicateAfterTrim", []string{"a", " a "}, []string{"a"}},
+		{
+			"DropBuiltInOverlap",
+			[]string{"You are a code reviewer.", "novel"},
+			[]string{"novel"},
+		},
+		{
+			"PreservesUserOrder",
+			[]string{"zeta", "alpha", "mu"},
+			[]string{"zeta", "alpha", "mu"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeUserPrefixes(tt.in)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("normalizeUserPrefixes(%q) = %q, want %q",
+					tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsAutomatedSessionWithUserPrefixes(t *testing.T) {
+	t.Cleanup(func() { SetUserAutomationPrefixes(nil) })
+	SetUserAutomationPrefixes([]string{
+		"You are analyzing an essay",
+		"Grade these Benn Stancil quotes",
+	})
+
+	tests := []struct {
+		name         string
+		firstMessage string
+		want         bool
+	}{
+		{
+			"UserPrefixMatchesEssayPrompt",
+			"You are analyzing an essay about epistemology.",
+			true,
+		},
+		{
+			"UserPrefixMatchesGradeQuotes",
+			"Grade these Benn Stancil quotes for me.",
+			true,
+		},
+		{
+			"UserPrefixDoesNotMatchUnrelated",
+			"How do I fix this bug?",
+			false,
+		},
+		{
+			"BuiltInPrefixStillMatches",
+			"You are a code reviewer. Review the diff.",
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsAutomatedSession(tt.firstMessage)
+			if got != tt.want {
+				t.Errorf("IsAutomatedSession(%q) = %v, want %v",
+					tt.firstMessage, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUserAutomationPrefixesReturnsCopy(t *testing.T) {
+	t.Cleanup(func() { SetUserAutomationPrefixes(nil) })
+	SetUserAutomationPrefixes([]string{"alpha", "beta"})
+	got := UserAutomationPrefixes()
+	if len(got) > 0 {
+		got[0] = "MUTATED"
+	}
+	again := UserAutomationPrefixes()
+	if len(again) == 0 || again[0] != "alpha" {
+		t.Errorf("singleton mutated through returned slice: got %q", again)
 	}
 }

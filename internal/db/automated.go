@@ -3,6 +3,7 @@ package db
 import (
 	"slices"
 	"strings"
+	"sync"
 )
 
 // IsAutomatedBackfillMarker is the stats/sync_metadata key that
@@ -49,6 +50,64 @@ var automatedExactMatches = []string{
 	"Warmup",
 }
 
+const userPrefixMaxLen = 1024
+
+var (
+	userPrefixesMu sync.RWMutex
+	userPrefixes   []string
+)
+
+// SetUserAutomationPrefixes replaces the user-pattern slice
+// with a normalized copy of the input. Normalization (trim,
+// drop empty, length cap, dedupe within input, drop entries
+// that equal a built-in prefix) happens here so callers can
+// pass the raw list straight from config. Pass nil to clear.
+// Idempotent and silent — safe to call from quiet CLI paths
+// (statusline, JSON output). Callers that want a startup
+// summary should read len(UserAutomationPrefixes()).
+func SetUserAutomationPrefixes(prefixes []string) {
+	cleaned := normalizeUserPrefixes(prefixes)
+	userPrefixesMu.Lock()
+	defer userPrefixesMu.Unlock()
+	userPrefixes = cleaned
+}
+
+// UserAutomationPrefixes returns a copy of the current
+// user-prefix slice. Used by ClassifierHash and tests; the
+// copy prevents callers from mutating singleton state.
+func UserAutomationPrefixes() []string {
+	userPrefixesMu.RLock()
+	defer userPrefixesMu.RUnlock()
+	return append([]string(nil), userPrefixes...)
+}
+
+// normalizeUserPrefixes applies the validation rules from the
+// design spec ("Validation behavior" section). Built-in
+// overlap is checked against the package-private
+// automatedPrefixes directly.
+func normalizeUserPrefixes(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, raw := range in {
+		s := strings.TrimSpace(raw)
+		if s == "" || len(s) > userPrefixMaxLen {
+			continue
+		}
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		if slices.Contains(automatedPrefixes, s) {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // IsAutomatedSession returns true if the first message
 // matches a known automated review/fix prompt pattern.
 func IsAutomatedSession(firstMessage string) bool {
@@ -57,6 +116,14 @@ func IsAutomatedSession(firstMessage string) bool {
 			return true
 		}
 	}
+	userPrefixesMu.RLock()
+	for _, prefix := range userPrefixes {
+		if strings.HasPrefix(firstMessage, prefix) {
+			userPrefixesMu.RUnlock()
+			return true
+		}
+	}
+	userPrefixesMu.RUnlock()
 	for _, sub := range automatedSubstrings {
 		if strings.Contains(firstMessage, sub) {
 			return true
