@@ -26,17 +26,15 @@ import (
 // trigger a non-destructive re-sync (mtime reset + skip cache
 // clear) so existing session data is preserved.
 //
-// Bumped to 17: Codex parser now filters <skill> template
-// injections from the user-message stream. Prior rows had
-// inflated user_message_count for sessions where the model
-// invoked a skill (Codex writes the skill template content as a
-// role=user JSONL entry), which prevented IsAutomatedSession
-// from gating them on the single-turn requirement. Re-parsing
-// rewrites user_message_count so the is_automated backfill can
-// classify them correctly.
+// Bumped to 18: Claude parser now skips /clear and /effort
+// command envelopes when computing first_message, so sessions
+// that opened with one of those commands show the next real
+// user message in the sidebar instead of the command text.
+// Re-parsing rewrites first_message with the new logic.
 //
-// (16: same migration for <turn_aborted> system messages.)
-const dataVersion = 17
+// (17: Codex <skill> template filtering.)
+// (16: <turn_aborted> system messages.)
+const dataVersion = 18
 
 const tokenCoverageRepairStatsKey = "token_coverage_repair_v1"
 
