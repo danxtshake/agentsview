@@ -1413,7 +1413,20 @@ In `cmd/agentsview/pg.go`, in `runPGPush`, insert just before `db.Open` (line
 (The same call covers both `db.Open` and the later `postgres.New` because
 they're in the same function body.)
 
-- [ ] **Step 12: Wire `runPGServe`**
+- [ ] **Step 12: Wire `runPGStatus`**
+
+In `cmd/agentsview/pg.go`, in `runPGStatus`, insert just before `db.Open` (line
+160):
+
+```go
+	applyClassifierConfig(appCfg)
+	database, err := db.Open(appCfg.DBPath)
+```
+
+(The same call covers `postgres.New` at line 174 because they're in the same
+function body.)
+
+- [ ] **Step 13: Wire `runPGServe`**
 
 In `cmd/agentsview/pg.go`, in `runPGServe`, insert just before
 `postgres.NewStore` (line 236):
@@ -1423,7 +1436,7 @@ In `cmd/agentsview/pg.go`, in `runPGServe`, insert just before
 	store, err := postgres.NewStore(
 ```
 
-- [ ] **Step 13: Wire `newService` (transport.go)**
+- [ ] **Step 14: Wire `newService` (transport.go)**
 
 In `cmd/agentsview/transport.go`, in `newService`, insert in the `default:`
 (direct mode) branch just before `db.Open` (line 112):
@@ -1434,7 +1447,7 @@ In `cmd/agentsview/transport.go`, in `newService`, insert in the `default:`
 		d, err := db.Open(cfg.DBPath)
 ```
 
-- [ ] **Step 14: Wire `syncService` (session_sync.go)**
+- [ ] **Step 15: Wire `syncService` (session_sync.go)**
 
 In `cmd/agentsview/session_sync.go`, in `syncService`, insert in the direct
 branch just before `db.Open` (line 92):
@@ -1444,7 +1457,21 @@ branch just before `db.Open` (line 92):
 	d, err := db.Open(cfg.DBPath)
 ```
 
-- [ ] **Step 15: Build and run all CLI tests**
+- [ ] **Step 16: Wire `session export`**
+
+In `cmd/agentsview/session_export.go`, inside the `RunE: func(...)` closure on
+the cobra command, insert just before `db.Open` (line 38):
+
+```go
+			applyClassifierConfig(cfg)
+			d, err := db.Open(cfg.DBPath)
+```
+
+The helper call must be inside the `RunE` closure (not in a builder function)
+because the static guardrail in Task 7 scans each `*ast.FuncLit` body
+independently.
+
+- [ ] **Step 17: Build and run all CLI tests**
 
 ```bash
 make build
@@ -1455,7 +1482,7 @@ Expected: build succeeds, tests pass. If a test relies on `is_automated` being
 recomputed inside `pushSession`, surface the failure and fix by calling
 `applyClassifierConfig` earlier in the test setup.
 
-- [ ] **Step 16: Smoke test the binary**
+- [ ] **Step 18: Smoke test the binary**
 
 ```bash
 ./agentsview --help
@@ -1465,7 +1492,7 @@ recomputed inside `pushSession`, surface the failure and fix by calling
 Expected: both commands run without error and without printing
 classifier-related warnings.
 
-- [ ] **Step 17: Run formatter and vet**
+- [ ] **Step 19: Run formatter and vet**
 
 ```bash
 go fmt ./cmd/agentsview/...
@@ -1474,7 +1501,7 @@ go vet ./cmd/agentsview/...
 
 Expected: no diff, no warnings.
 
-- [ ] **Step 18: Commit**
+- [ ] **Step 20: Commit**
 
 ```bash
 git add cmd/agentsview/classifier_wiring.go \
@@ -1483,7 +1510,8 @@ git add cmd/agentsview/classifier_wiring.go \
 	cmd/agentsview/prune.go cmd/agentsview/projects.go \
 	cmd/agentsview/stats.go cmd/agentsview/usage.go \
 	cmd/agentsview/token_use.go cmd/agentsview/pg.go \
-	cmd/agentsview/transport.go cmd/agentsview/session_sync.go
+	cmd/agentsview/transport.go cmd/agentsview/session_sync.go \
+	cmd/agentsview/session_export.go
 git commit -m "feat(cli): wire user automation prefixes into every store-open path"
 ```
 
@@ -1781,11 +1809,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/wesm/agentsview/internal/config"
 	"github.com/wesm/agentsview/internal/db"
 )
@@ -1831,15 +1862,29 @@ func seedHash(t *testing.T, cfg config.Config) {
 }
 
 // readStoredHash returns the stored classifier hash from the
-// stats table, or "" if none.
+// stats table via a raw SQLite connection. Bypasses db.Open
+// because db.Open runs the backfill, which would re-write
+// the hash that this helper exists to observe (e.g. after
+// runClassifierRebuild deletes it).
 func readStoredHash(t *testing.T, dbPath string) string {
 	t.Helper()
-	d, err := db.Open(dbPath)
+	conn, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("open raw sqlite: %v", err)
 	}
-	defer d.Close()
-	return d.GetStat("is_automated_classifier_hash")
+	defer conn.Close()
+	var v string
+	err = conn.QueryRow(
+		`SELECT value FROM stats WHERE key = ?`,
+		"is_automated_classifier_hash",
+	).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ""
+	}
+	if err != nil {
+		t.Fatalf("query stats: %v", err)
+	}
+	return v
 }
 
 func TestClassifierRebuildClearsSQLiteHash(t *testing.T) {
@@ -1937,49 +1982,20 @@ func TestClassifierRebuildAllowsDirectWritable(t *testing.T) {
 }
 ```
 
-This test file references three not-yet-implemented functions:
+This test file references two not-yet-implemented functions:
 
-- `runClassifierRebuild(ctx, cfg, out)` — the real rebuild driver, exported in
-  test scope as a package function.
+- `runClassifierRebuild(ctx, cfg, out)` — the real rebuild driver, defined as a
+  package function in `cmd/agentsview/classifier.go` (Step 3 below).
 
 - `guardClassifierRebuild(tr)` — pure transport-mode check, factored out so it's
-  testable without spinning up an HTTP listener.
+  testable without spinning up an HTTP listener (also defined in
+  `cmd/agentsview/classifier.go` in Step 3).
 
-- `db.GetStat(key)` — a tiny accessor on `*db.DB` that reads `stats.value`. If
-  this doesn't exist yet, add it in Step 2.
+The `readStoredHash` helper deliberately uses `sql.Open("sqlite3", ...)` to read
+the `stats` row directly, bypassing `db.Open` (which would re-run the backfill
+and re-write the hash that this helper exists to observe).
 
-- [ ] **Step 2: Add `GetStat` accessor on `*db.DB`**
-
-Check whether `internal/db/db.go` already has a stats accessor:
-
-```bash
-grep -nE "GetStat|stats\.value" internal/db/db.go internal/db/*.go
-```
-
-If a `GetStat` accessor does not exist, add this near the other stats helpers in
-`internal/db/db.go`:
-
-```go
-// GetStat returns the value stored at key in the stats
-// table, or "" if absent. Used by tests and by the
-// classifier rebuild command.
-func (db *DB) GetStat(key string) string {
-	w := db.getReader()
-	var v string
-	if err := w.QueryRow(
-		`SELECT value FROM stats WHERE key = ?`, key,
-	).Scan(&v); err != nil {
-		return ""
-	}
-	return v
-}
-```
-
-(If the codebase already has `getReader` / `getWriter` accessors — which it does
-per the existing tests — use whichever is appropriate. `getReader` is correct
-for a SELECT.)
-
-- [ ] **Step 3: Run the tests to verify they fail**
+- [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
 CGO_ENABLED=1 go test -tags fts5 ./cmd/agentsview/ -run TestClassifierRebuild -v
@@ -1987,7 +2003,7 @@ CGO_ENABLED=1 go test -tags fts5 ./cmd/agentsview/ -run TestClassifierRebuild -v
 
 Expected: FAIL — `runClassifierRebuild` and `guardClassifierRebuild` undefined.
 
-- [ ] **Step 4: Implement the command**
+- [ ] **Step 3: Implement the command**
 
 Create `cmd/agentsview/classifier.go`:
 
@@ -2106,7 +2122,7 @@ func runClassifierRebuild(
 		return fmt.Errorf("resolving pg config: %w", err)
 	}
 	if pgCfg.URL != "" {
-		if err := clearPGClassifierHash(ctx, pgCfg); err != nil {
+		if err := clearPGClassifierHash(ctx, cfg, pgCfg); err != nil {
 			return fmt.Errorf("clearing PG hash: %w", err)
 		}
 	}
@@ -2137,9 +2153,15 @@ func clearSQLiteClassifierHash(dbPath string) error {
 	return err
 }
 
+// clearPGClassifierHash takes the full cfg so the static
+// guardrail (Task 7) sees an applyClassifierConfig call in
+// the same enclosing body as the postgres.Open trigger.
+// The helper is silent and idempotent, so calling it again
+// here on top of the RunE-closure call is harmless.
 func clearPGClassifierHash(
-	ctx context.Context, pgCfg config.PGConfig,
+	ctx context.Context, cfg config.Config, pgCfg config.PGConfig,
 ) error {
+	applyClassifierConfig(cfg)
 	pg, err := postgres.Open(
 		pgCfg.URL, pgCfg.Schema, pgCfg.AllowInsecure,
 	)
@@ -2163,7 +2185,7 @@ does the backfill.
 The `postgres.Open` signature is `(dsn, schema string, allowInsecure bool)` —
 see `internal/postgres/connect.go:144`.
 
-- [ ] **Step 5: Register the classifier group on the root command**
+- [ ] **Step 4: Register the classifier group on the root command**
 
 In `cmd/agentsview/cli.go`, in `newRootCommand`, add the classifier subcommand
 registration alongside the others (anywhere in the `root.AddCommand(...)` block,
@@ -2173,7 +2195,7 @@ e.g. just before `root.AddCommand(newVersionCommand())`):
 	root.AddCommand(newClassifierCommand())
 ```
 
-- [ ] **Step 6: Add a PG-error hard-failure test**
+- [ ] **Step 5: Add a PG-error hard-failure test**
 
 The spec testing table requires this command to treat PG delete failure as a
 hard error when PG is configured (covering both reachable-but-error and
@@ -2247,7 +2269,7 @@ this command, extend `internal/postgres/automated_pgtest_test.go` with a
 `REVOKE DELETE` case rather than reaching into `cmd/agentsview` from a pgtest
 file.
 
-- [ ] **Step 7: Run all the new tests**
+- [ ] **Step 6: Run all the new tests**
 
 ```bash
 CGO_ENABLED=1 go test -tags fts5 ./cmd/agentsview/ -run TestClassifier -v
@@ -2255,7 +2277,7 @@ CGO_ENABLED=1 go test -tags fts5 ./cmd/agentsview/ -run TestClassifier -v
 
 Expected: PASS for all `TestClassifier*` tests, including the two PG cases.
 
-- [ ] **Step 8: Re-run the static guardrail test**
+- [ ] **Step 7: Re-run the static guardrail test**
 
 ```bash
 CGO_ENABLED=1 go test -tags fts5 ./cmd/agentsview/ -run TestEveryStoreOpenPathIsWired -v
@@ -2265,7 +2287,7 @@ Expected: PASS. The new `classifier.go` calls `applyClassifierConfig` inside the
 `RunE` closure before any store-open trigger (note: it uses raw `sql.Open` and
 `postgres.Open`, so the trigger that matters is `postgres.Open`).
 
-- [ ] **Step 9: Smoke test the new CLI**
+- [ ] **Step 8: Smoke test the new CLI**
 
 ```bash
 make build
@@ -2275,20 +2297,20 @@ make build
 
 Expected: help renders without error.
 
-- [ ] **Step 10: Run formatter and vet**
+- [ ] **Step 9: Run formatter and vet**
 
 ```bash
-go fmt ./cmd/agentsview/... ./internal/db/...
-go vet ./cmd/agentsview/... ./internal/db/...
+go fmt ./cmd/agentsview/...
+go vet ./cmd/agentsview/...
 ```
 
 Expected: no diff, no warnings.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add cmd/agentsview/classifier.go cmd/agentsview/classifier_test.go \
-	cmd/agentsview/cli.go internal/db/db.go
+	cmd/agentsview/cli.go
 git commit -m "feat(cli): agentsview classifier rebuild for hash recovery"
 ```
 
