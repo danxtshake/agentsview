@@ -5569,3 +5569,83 @@ func TestSyncSingleSessionOpenCodeExcludedIsNoOp(
 		)
 	}
 }
+
+func TestIncrementalSync_ClaudeClearOnlyRepairedOnAppend(t *testing.T) {
+	env := setupTestEnv(t)
+
+	// Initial sync: session opens with only a /clear command
+	// envelope. Under the new parser rule, first_message is
+	// empty even though UserMsgCount is 1.
+	initial := testjsonl.JoinJSONL(
+		testjsonl.ClaudeUserJSON(
+			"<command-name>/clear</command-name>",
+			tsZero,
+		),
+	)
+	path := env.writeClaudeSession(
+		t, "proj", "clear-only.jsonl", initial,
+	)
+	env.engine.SyncAll(context.Background(), nil)
+
+	full, err := env.db.GetSessionFull(
+		context.Background(), "clear-only",
+	)
+	if err != nil {
+		t.Fatalf("GetSessionFull after initial sync: %v", err)
+	}
+	if full.FirstMessage != nil && *full.FirstMessage != "" {
+		t.Fatalf(
+			"initial FirstMessage = %q, want empty",
+			*full.FirstMessage,
+		)
+	}
+	if full.UserMessageCount != 1 {
+		t.Fatalf(
+			"initial UserMessageCount = %d, want 1",
+			full.UserMessageCount,
+		)
+	}
+
+	// Append a real user message — incremental sync must now
+	// fall back to a full parse so first_message gets populated.
+	appended := testjsonl.ClaudeUserJSON(
+		"Fix the login bug", tsZeroS1,
+	) + "\n"
+	f, err := os.OpenFile(
+		path, os.O_APPEND|os.O_WRONLY, 0o644,
+	)
+	if err != nil {
+		t.Fatalf("open for append: %v", err)
+	}
+	_, err = f.WriteString(appended)
+	f.Close()
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	env.engine.SyncPaths([]string{path})
+
+	updated, err := env.db.GetSessionFull(
+		context.Background(), "clear-only",
+	)
+	if err != nil {
+		t.Fatalf("GetSessionFull after append: %v", err)
+	}
+	if updated.FirstMessage == nil ||
+		*updated.FirstMessage != "Fix the login bug" {
+		got := ""
+		if updated.FirstMessage != nil {
+			got = *updated.FirstMessage
+		}
+		t.Errorf(
+			"FirstMessage after append = %q, want %q",
+			got, "Fix the login bug",
+		)
+	}
+	if updated.UserMessageCount != 2 {
+		t.Errorf(
+			"UserMessageCount after append = %d, want 2",
+			updated.UserMessageCount,
+		)
+	}
+}
