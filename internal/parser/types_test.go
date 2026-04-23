@@ -576,7 +576,11 @@ func TestResolveOpenCodeWatchRootsStorage(t *testing.T) {
 	}
 
 	got := ResolveOpenCodeWatchRoots(root)
-	want := []string{root}
+	want := []string{
+		filepath.Join(root, "storage", "session"),
+		filepath.Join(root, "storage", "message"),
+		filepath.Join(root, "storage", "part"),
+	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("ResolveOpenCodeWatchRoots() = %v, want %v", got, want)
 	}

@@ -186,10 +186,23 @@ func FindOpenCodeSourceFile(root, sessionID string) string {
 }
 
 // ResolveOpenCodeWatchRoots returns the directories that should be
-// watched for live OpenCode updates under a configured root.
+// watched for live OpenCode updates under a configured root. Storage
+// mode narrows the watch to the three storage subtrees so fsnotify
+// does not recurse over unrelated opencode state; SQLite mode keeps
+// the root as the watch target since the DB sits directly under it.
 func ResolveOpenCodeWatchRoots(root string) []string {
 	if root == "" {
 		return nil
+	}
+	switch ResolveOpenCodeSource(root).Mode {
+	case OpenCodeSourceStorage:
+		return []string{
+			filepath.Join(root, "storage", "session"),
+			filepath.Join(root, "storage", "message"),
+			filepath.Join(root, "storage", "part"),
+		}
+	case OpenCodeSourceSQLite:
+		return []string{root}
 	}
 	if info, err := os.Stat(root); err == nil && info.IsDir() {
 		return []string{root}
