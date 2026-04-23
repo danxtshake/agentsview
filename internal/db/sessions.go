@@ -998,7 +998,10 @@ func (db *DB) GetSessionVersion(
 }
 
 // IncrementalInfo holds the data needed for incremental
-// re-parsing of an append-only session file.
+// re-parsing of an append-only session file. FirstMessage is
+// the currently stored preview text; the sync engine uses it to
+// decide whether the Claude parser's skip-command path has left
+// the preview empty and a full parse should be forced.
 type IncrementalInfo struct {
 	ID                   string
 	FileSize             int64
@@ -1007,6 +1010,7 @@ type IncrementalInfo struct {
 	FileDevice           int64
 	MsgCount             int
 	UserMsgCount         int
+	FirstMessage         string
 	TotalOutputTokens    int
 	PeakContextTokens    int
 	HasTotalOutputTokens bool
@@ -1034,10 +1038,12 @@ func (db *DB) GetSessionForIncremental(
 
 	var info IncrementalInfo
 	var fs, fm, fi, fd sql.NullInt64
+	var firstMsg sql.NullString
 	err = db.getReader().QueryRow(
 		`SELECT id, file_size, file_mtime,
 			file_inode, file_device,
 			message_count, user_message_count,
+			first_message,
 			total_output_tokens, peak_context_tokens,
 			has_total_output_tokens, has_peak_context_tokens
 		 FROM sessions WHERE file_path = ?`,
@@ -1045,11 +1051,15 @@ func (db *DB) GetSessionForIncremental(
 	).Scan(
 		&info.ID, &fs, &fm, &fi, &fd,
 		&info.MsgCount, &info.UserMsgCount,
+		&firstMsg,
 		&info.TotalOutputTokens, &info.PeakContextTokens,
 		&info.HasTotalOutputTokens, &info.HasPeakContextTokens,
 	)
 	if err != nil {
 		return nil, false
+	}
+	if firstMsg.Valid {
+		info.FirstMessage = firstMsg.String
 	}
 	if fs.Valid {
 		info.FileSize = fs.Int64
