@@ -36,7 +36,8 @@ with no user messages).
 
 ### `internal/parser/claude.go`
 
-Add two helpers near the existing `extractCommandText`:
+Add two helpers near the existing `extractCommandText`. The helper uses
+`unicode/utf8` and `unicode` (already imported); `strings` is already imported.
 
 ```go
 // previewSkippedCommands lists commands that should not be used as
@@ -68,14 +69,15 @@ func isSkippablePreviewCommand(content string) bool {
 ```
 
 Extract the duplicated first-message/user-count loops (`:519-538` and
-`:693-706`) into a single helper:
+`:693-706`) into a single helper. The parser operates on `[]ParsedMessage`
+returned by `extractMessages`, not `Message`.
 
 ```go
 // firstMessageAndUserCount returns the preview string and the total
 // number of real (non-system) user turns. The preview skips known
 // Claude Code command envelopes like /clear and /effort so sessions
 // that begin with a command still show a meaningful preview.
-func firstMessageAndUserCount(messages []Message) (string, int) {
+func firstMessageAndUserCount(messages []ParsedMessage) (string, int) {
     firstMsg := ""
     userCount := 0
     for _, m := range messages {
@@ -105,6 +107,46 @@ parser now skips `/clear` and `/effort` when computing `first_message`. Existing
 DBs trigger the existing non-destructive re-sync path (mtime reset + skip cache
 clear), so sessions are re-parsed with the new logic on next start.
 
+### Incremental sync path
+
+The incremental path (`writeIncremental` in `internal/sync/engine.go:3183` and
+`UpdateSessionIncremental` in `internal/db/sessions.go:1085`) appends messages
+without overwriting `first_message`. Without changes here, a session can sync
+once with only `/clear` as its opening user turn — producing an empty
+`first_message` under the new skip logic — and later incremental syncs that
+append the real prompt will leave `first_message` empty forever.
+
+Fix by forcing a full parse at the incremental entry point when the stored
+session already has user turns but no preview string:
+
+**`internal/db/sessions.go`** — extend `IncrementalInfo` with
+`FirstMessage string` and update `GetSessionForIncremental` to select
+`first_message` into it. The column is nullable, so read into a `sql.NullString`
+and copy the value (or empty) into the field.
+
+**`internal/sync/engine.go`** — in `tryIncrementalJSONL`, alongside the existing
+data-version and file-identity fall-through checks (currently around
+`:2186-2214`), add:
+
+```go
+// If the stored preview is empty despite having user turns, the
+// Claude parser skipped every user message so far (e.g. a session
+// that opens with /clear). A full parse gives the newly-appended
+// real user message a chance to become first_message.
+if inc.FirstMessage == "" && inc.UserMsgCount > 0 {
+    return processResult{}, false
+}
+```
+
+This is gated on `UserMsgCount > 0` so sessions that legitimately have no user
+messages yet still take the incremental path. The `currentSize <= inc.FileSize`
+early return (`:2192`) already guarantees we only fall through when the file has
+new bytes, bounding the extra full-parse cost.
+
+Non-Claude agents never produce an empty `first_message` when real user messages
+exist, so the gate is functionally a no-op for them. Gating on agent explicitly
+would add a field to `IncrementalInfo` for no gain.
+
 ## Tests
 
 New cases in `internal/parser/claude_parser_test.go`:
@@ -127,6 +169,13 @@ New cases in `internal/parser/claude_parser_test.go`:
    - Control: first user message is `/roborev-fix 450` (a non-skipped command) →
      assert `first_message` equals `/roborev-fix 450`, confirming we haven't
      broadened the skip list.
+
+1. **Incremental sync test** in `internal/sync/engine_integration_test.go` (or
+   the parser equivalent): write a session file containing only a `/clear` user
+   envelope, sync it (first_message stored as empty). Append a real user message
+   to the same file, sync again, and assert that the session's `first_message`
+   is now the real message. This exercises the full-parse fall-through added to
+   `tryIncrementalJSONL`.
 
 ## Out of scope
 
