@@ -37,6 +37,8 @@ const dataVersion = 16
 
 const tokenCoverageRepairStatsKey = "token_coverage_repair_v1"
 
+const classifierHashStatsKey = "is_automated_classifier_hash"
+
 //go:embed schema.sql
 var schemaSQL string
 
@@ -571,20 +573,22 @@ func (db *DB) createPartialIndexesLocked(w *sql.DB) error {
 // backfillIsAutomatedLocked recomputes is_automated for all
 // sessions, correcting both false negatives (new patterns) and
 // stale false positives (patterns tightened since last run).
-// Guarded by a stats marker so it only runs once per pattern
-// version.
+// Gated by a stored classifier hash so it only runs when the
+// classifier set (built-in patterns + user prefixes + algorithm
+// version) has changed since the last successful run.
 func (db *DB) backfillIsAutomatedLocked(w *sql.DB) error {
-	const marker = IsAutomatedBackfillMarker
-	var done int
-	if err := w.QueryRow(
-		`SELECT count(*) FROM stats
-		 WHERE key = ? AND value != 0`, marker,
-	).Scan(&done); err != nil {
+	current := ClassifierHash()
+	var stored string
+	err := w.QueryRow(
+		`SELECT value FROM stats WHERE key = ?`,
+		classifierHashStatsKey,
+	).Scan(&stored)
+	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf(
-			"probing automated backfill marker: %w", err,
+			"probing classifier hash: %w", err,
 		)
 	}
-	if done > 0 {
+	if err == nil && stored == current {
 		return nil
 	}
 
@@ -605,18 +609,18 @@ func (db *DB) backfillIsAutomatedLocked(w *sql.DB) error {
 	for rows.Next() {
 		var id, fm string
 		var umc int
-		var current bool
+		var rowAutomated bool
 		if err := rows.Scan(
-			&id, &fm, &umc, &current,
+			&id, &fm, &umc, &rowAutomated,
 		); err != nil {
 			return fmt.Errorf(
 				"scanning backfill candidate: %w", err,
 			)
 		}
 		want := umc <= 1 && IsAutomatedSession(fm)
-		if want && !current {
+		if want && !rowAutomated {
 			setIDs = append(setIDs, id)
-		} else if !want && current {
+		} else if !want && rowAutomated {
 			clearIDs = append(clearIDs, id)
 		}
 	}
@@ -643,12 +647,16 @@ func (db *DB) backfillIsAutomatedLocked(w *sql.DB) error {
 		)
 	}
 
-	_, err = w.Exec(
-		`INSERT INTO stats (key, value) VALUES (?, 1)
+	if _, err := w.Exec(
+		`INSERT INTO stats (key, value) VALUES (?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		marker,
-	)
-	return err
+		classifierHashStatsKey, current,
+	); err != nil {
+		return fmt.Errorf(
+			"storing classifier hash: %w", err,
+		)
+	}
+	return nil
 }
 
 func batchUpdateAutomated(

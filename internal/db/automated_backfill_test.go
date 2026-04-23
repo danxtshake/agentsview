@@ -39,7 +39,7 @@ func TestBackfillIsAutomatedBidirectional(t *testing.T) {
 	// Clear the marker so the backfill will run.
 	_, err = d.getWriter().Exec(
 		"DELETE FROM stats WHERE key = ?",
-		IsAutomatedBackfillMarker,
+		classifierHashStatsKey,
 	)
 	requireNoError(t, err, "clear marker")
 
@@ -80,7 +80,7 @@ func TestBackfillIsAutomatedMarkerIdempotent(t *testing.T) {
 	// Clear the marker and run backfill.
 	_, err := d.getWriter().Exec(
 		"DELETE FROM stats WHERE key = ?",
-		IsAutomatedBackfillMarker,
+		classifierHashStatsKey,
 	)
 	requireNoError(t, err, "clear marker")
 
@@ -238,7 +238,7 @@ func TestBackfillIsAutomatedBumpsLocalModifiedAt(t *testing.T) {
 	// Clear the marker so the backfill runs.
 	_, err = d.getWriter().Exec(
 		"DELETE FROM stats WHERE key = ?",
-		IsAutomatedBackfillMarker,
+		classifierHashStatsKey,
 	)
 	requireNoError(t, err, "clear marker")
 
@@ -260,5 +260,61 @@ func TestBackfillIsAutomatedBumpsLocalModifiedAt(t *testing.T) {
 			"local_modified_at not bumped: before=%q after=%q",
 			beforeLM, *after.LocalModifiedAt,
 		)
+	}
+}
+
+// TestBackfillIsAutomatedRerunsOnHashChange verifies that a
+// classifier change (here, adding a user prefix) invalidates
+// the stored hash and re-runs the backfill on next open,
+// without any manual marker bump.
+func TestBackfillIsAutomatedRerunsOnHashChange(t *testing.T) {
+	t.Cleanup(func() { SetUserAutomationPrefixes(nil) })
+	d := testDB(t)
+
+	// Seed a session whose first_message would match a
+	// user prefix once added. With the empty user-prefix
+	// list it should be is_automated=0.
+	insertSession(t, d, "essay", "proj", func(s *Session) {
+		fm := "You are analyzing an essay about epistemology."
+		s.FirstMessage = &fm
+		s.MessageCount = 2
+		s.UserMessageCount = 1
+	})
+	ctx := context.Background()
+	pre, err := d.GetSession(ctx, "essay")
+	requireNoError(t, err, "get essay before")
+	if pre.IsAutomated {
+		t.Fatalf("precondition: essay should be is_automated=0")
+	}
+
+	// Add a user prefix and re-run backfill. The new hash
+	// should not equal the stored hash, so the backfill
+	// runs and flips is_automated to 1.
+	SetUserAutomationPrefixes([]string{"You are analyzing an essay"})
+	d.mu.Lock()
+	err = d.backfillIsAutomatedLocked(d.getWriter())
+	d.mu.Unlock()
+	requireNoError(t, err, "backfill after prefix add")
+
+	got, err := d.GetSession(ctx, "essay")
+	requireNoError(t, err, "get essay after")
+	if !got.IsAutomated {
+		t.Error("essay should be is_automated=1 after user prefix added")
+	}
+
+	// A second backfill (no further classifier change) is a
+	// no-op: stored hash now matches.
+	_, err = d.getWriter().Exec(
+		"UPDATE sessions SET is_automated = 0 WHERE id = 'essay'",
+	)
+	requireNoError(t, err, "force back to 0")
+	d.mu.Lock()
+	err = d.backfillIsAutomatedLocked(d.getWriter())
+	d.mu.Unlock()
+	requireNoError(t, err, "second backfill")
+	got, err = d.GetSession(ctx, "essay")
+	requireNoError(t, err, "get essay second")
+	if got.IsAutomated {
+		t.Error("second backfill must be a no-op when hash unchanged")
 	}
 }
