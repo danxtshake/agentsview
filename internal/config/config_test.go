@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1069,5 +1070,47 @@ func TestResolvePG_AllowsBothFilterLists(t *testing.T) {
 			"ResolvePG should not reject filter conflicts: %v",
 			err,
 		)
+	}
+}
+
+func TestAutomatedPrefixesRoundTrip(t *testing.T) {
+	dir := setupTestEnv(t)
+	writeConfig(t, dir, map[string]any{
+		"automated": map[string]any{
+			"prefixes": []string{
+				"You are analyzing an essay",
+				"You are grading quotes",
+				"  ",                         // whitespace preserved here; normalization is db-side
+				"You are analyzing an essay", // duplicate preserved here too
+			},
+		},
+	})
+	cfg, err := loadConfigFromPFlags(t)
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	got := cfg.Automated.Prefixes
+	want := []string{
+		"You are analyzing an essay",
+		"You are grading quotes",
+		"  ",
+		"You are analyzing an essay",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("prefixes = %q, want %q", got, want)
+	}
+}
+
+func TestAutomatedPrefixesAbsentIsNil(t *testing.T) {
+	dir := setupTestEnv(t)
+	writeConfig(t, dir, map[string]any{
+		"public_url": "http://example.com",
+	})
+	cfg, err := loadConfigFromPFlags(t)
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	if cfg.Automated.Prefixes != nil {
+		t.Errorf("expected nil, got %v", cfg.Automated.Prefixes)
 	}
 }
