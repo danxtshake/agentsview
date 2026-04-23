@@ -221,16 +221,22 @@ func TestIsAutomatedSession(t *testing.T) {
 			true,
 		},
 
-		// Templated automated review prompt — common across IDE
-		// review actions and CI hook scripts.
+		// Templated automated review prompts — common across IDE
+		// review actions, CI hook scripts, and ACP test adapters.
 		{
 			"ReviewCodeChangesByCommit",
 			"Review the code changes introduced by commit 680de37a6c99f35dd9bdc3b1f52d8278dc2e6eef. Provide prioritized, actionable findings.",
 			true,
 		},
+		{
+			"ReviewCodeChangesInCommit",
+			"Review the code changes in commit 9a89a700763777b86f7e939495563a5cd0e5d74c.\n\nRepository: /tmp/foo\n\nPrompt: ...",
+			true,
+		},
 
-		// Codex CLI warmup probe (codex equivalent of Claude
-		// Code's "Warmup" exact match).
+		// Codex CLI warmup probes (analogs of Claude Code's
+		// "Warmup" exact match). Two distinct phrasings observed
+		// in the wild — keep both as exact matches.
 		{
 			"CodexRespondExactlyOK",
 			"Respond with exactly: OK",
@@ -239,6 +245,16 @@ func TestIsAutomatedSession(t *testing.T) {
 		{
 			"CodexRespondExactlyOKTrailingNewline",
 			"Respond with exactly: OK\n",
+			true,
+		},
+		{
+			"CodexReplyExactlyOK",
+			"Reply with exactly OK.",
+			true,
+		},
+		{
+			"CodexReplyExactlyOKTrailingNewline",
+			"Reply with exactly OK.\n",
 			true,
 		},
 
@@ -261,6 +277,12 @@ func TestIsAutomatedSession(t *testing.T) {
 		{
 			"RespondExactlyOKWithExtra",
 			"Respond with exactly: OK and then explain why.",
+			false,
+		},
+		// Negative: "Reply with exactly OK." must be exact too.
+		{
+			"ReplyExactlyOKWithExtra",
+			"Reply with exactly OK. Then summarize.",
 			false,
 		},
 		// Negative: human paraphrase shouldn't trip the implementer

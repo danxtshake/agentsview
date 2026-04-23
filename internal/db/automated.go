@@ -28,6 +28,7 @@ var automatedPrefixes = []string{
 	"You are generating a changelog",
 	"<user_action>",
 	"Review the code changes introduced by commit ",
+	"Review the code changes in commit ",
 	"Implement the following plan:",
 }
 
@@ -46,6 +47,7 @@ var automatedSubstrings = []string{
 var automatedExactMatches = []string{
 	"Warmup",
 	"Respond with exactly: OK",
+	"Reply with exactly OK.",
 }
 
 const userPrefixMaxLen = 1024
