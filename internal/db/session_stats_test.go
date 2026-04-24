@@ -1479,12 +1479,28 @@ func TestGetSessionStats_AgentPortfolio_Empty(t *testing.T) {
 	if ap.ByTokens == nil {
 		t.Errorf("ByTokens: got nil want non-nil map")
 	}
+	if ap.BySessionsHuman == nil {
+		t.Errorf("BySessionsHuman: got nil want non-nil map")
+	}
+	if ap.ByMessagesHuman == nil {
+		t.Errorf("ByMessagesHuman: got nil want non-nil map")
+	}
+	if ap.ByTokensHuman == nil {
+		t.Errorf("ByTokensHuman: got nil want non-nil map")
+	}
 	if len(ap.BySessions) != 0 || len(ap.ByMessages) != 0 ||
 		len(ap.ByTokens) != 0 {
 		t.Errorf("empty window: got non-empty maps %+v", ap)
 	}
+	if len(ap.BySessionsHuman) != 0 || len(ap.ByMessagesHuman) != 0 ||
+		len(ap.ByTokensHuman) != 0 {
+		t.Errorf("empty window: got non-empty human maps %+v", ap)
+	}
 	if ap.Primary != "" {
 		t.Errorf("Primary: got %q want empty", ap.Primary)
+	}
+	if ap.PrimaryHuman != "" {
+		t.Errorf("PrimaryHuman: got %q want empty", ap.PrimaryHuman)
 	}
 }
 
