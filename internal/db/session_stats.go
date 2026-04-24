@@ -367,6 +367,11 @@ type sessionStatsRow struct {
 	// computeOutcomeStats to resolve enclosing git repositories; empty
 	// string indicates the session had no recorded cwd and is skipped.
 	cwd string
+	// isAutomated mirrors sessions.is_automated. Consumed by
+	// computeTotalsAndArchetypes, computeDistributions, and
+	// computeAgentPortfolio as the single source of truth for
+	// whether a session is automated.
+	isAutomated bool
 }
 
 // loadSessionsInWindow returns the rows the stats pipeline needs.
@@ -446,7 +451,8 @@ func (db *DB) loadSessionsInWindow(
 			0) AS assistant_turns,
 		s.outcome, COALESCE(s.health_grade, ''),
 		s.tool_retry_count, s.compaction_count, s.edit_churn_count,
-		COALESCE(s.cwd, '')
+		COALESCE(s.cwd, ''),
+		s.is_automated
 		FROM sessions s WHERE ` + strings.Join(preds, " AND ")
 
 	sqlRows, err := db.getReader().QueryContext(ctx, query, args...)
@@ -462,7 +468,7 @@ func (db *DB) loadSessionsInWindow(
 		var r sessionStatsRow
 		var startedAt string
 		var endedAt sql.NullString
-		var hasTotalTokens, hasPeak int
+		var hasTotalTokens, hasPeak, isAutomated int
 		if err := sqlRows.Scan(
 			&r.id, &r.agent, &r.project,
 			&startedAt, &endedAt,
@@ -473,6 +479,7 @@ func (db *DB) loadSessionsInWindow(
 			&r.outcome, &r.healthGrade,
 			&r.toolRetryCount, &r.compactionCount, &r.editChurnCount,
 			&r.cwd,
+			&isAutomated,
 		); err != nil {
 			return nil, fmt.Errorf(
 				"scanning session stats row: %w", err,
@@ -498,6 +505,7 @@ func (db *DB) loadSessionsInWindow(
 		}
 		r.hasTotalOutputTokens = hasTotalTokens == 1
 		r.hasPeakContext = hasPeak == 1
+		r.isAutomated = isAutomated == 1
 		out = append(out, r)
 	}
 	if err := sqlRows.Err(); err != nil {

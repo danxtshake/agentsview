@@ -86,6 +86,36 @@ func Test_insertSessionFixture_isAutomated_patch(t *testing.T) {
 	}
 }
 
+func Test_loadSessionsInWindow_isAutomated(t *testing.T) {
+	d := testDB(t)
+	insertSessionFixture(t, d, sessionFixture{
+		id: "auto", userMsgs: 5, startedAt: hoursAgo(1),
+		isAutomated: true,
+	})
+	insertSessionFixture(t, d, sessionFixture{
+		id: "human", userMsgs: 1, startedAt: hoursAgo(1),
+		isAutomated: false,
+	})
+
+	ctx := t.Context()
+	from := time.Now().Add(-24 * time.Hour)
+	to := time.Now().Add(1 * time.Hour)
+	rows, err := d.loadSessionsInWindow(ctx, StatsFilter{}, from, to)
+	if err != nil {
+		t.Fatalf("loadSessionsInWindow: %v", err)
+	}
+	byID := map[string]bool{}
+	for _, r := range rows {
+		byID[r.id] = r.isAutomated
+	}
+	if got, want := byID["auto"], true; got != want {
+		t.Fatalf("auto.isAutomated = %v, want %v", got, want)
+	}
+	if got, want := byID["human"], false; got != want {
+		t.Fatalf("human.isAutomated = %v, want %v", got, want)
+	}
+}
+
 // insertSessionFixture inserts a sessionFixture via the standard
 // UpsertSession path so triggers and defaults stay authoritative.
 // Defaults mirror insertSession in db_test.go (machine=local,
