@@ -21,7 +21,7 @@ func loadPGServeConfigForTest(t *testing.T, args ...string) (config.Config, stri
 
 func TestLoadPGServeConfigDoesNotInheritServeProxySettings(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	err := os.WriteFile(filepath.Join(dataDir, "config.toml"), []byte(`
 public_url = "https://viewer.example.test"
@@ -68,7 +68,7 @@ url = "postgres://user:pass@db.example.test:5432/agentsview?sslmode=require"
 
 func TestLoadPGServeConfigIgnoresInvalidPersistedServeSettings(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	err := os.WriteFile(filepath.Join(dataDir, "config.toml"), []byte(`
 public_url = "not a url"
@@ -99,7 +99,7 @@ url = "postgres://user:pass@db.example.test:5432/agentsview?sslmode=require"
 }
 
 func TestPGServeConfigAcceptsManagedCaddyFlags(t *testing.T) {
-	t.Setenv("AGENT_VIEWER_DATA_DIR", t.TempDir())
+	t.Setenv("AGENTSVIEW_DATA_DIR", t.TempDir())
 
 	cfg, basePath, err := loadPGServeConfigForTest(t,
 		"--host", "127.0.0.1",
@@ -189,7 +189,7 @@ func TestRunPGServeRejectsInvalidManagedCaddyConfigBeforePGSetup(t *testing.T) {
 	cmd.Env = append(
 		os.Environ(),
 		"AGENTSVIEW_RUN_PG_SERVE_HELPER=1",
-		"AGENT_VIEWER_DATA_DIR="+dataDir,
+		"AGENTSVIEW_DATA_DIR="+dataDir,
 	)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -210,7 +210,7 @@ func TestRunPGServeNonLoopbackWithoutProxyFallsThroughToPGConfig(t *testing.T) {
 	cmd.Env = append(
 		os.Environ(),
 		"AGENTSVIEW_RUN_PG_SERVE_HELPER=1",
-		"AGENT_VIEWER_DATA_DIR="+dataDir,
+		"AGENTSVIEW_DATA_DIR="+dataDir,
 	)
 	out, err := cmd.CombinedOutput()
 	if err == nil {

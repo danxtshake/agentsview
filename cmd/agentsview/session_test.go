@@ -82,7 +82,7 @@ func seedSessionWithOpts(
 
 func TestSessionGet_JSON(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-1", "proj")
 
 	out, err := executeCommand(newRootCommand(),
@@ -98,7 +98,7 @@ func TestSessionGet_JSON(t *testing.T) {
 
 func TestSessionGet_NotFound(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	_, err := executeCommand(newRootCommand(),
 		"session", "get", "missing", "--format", "json")
@@ -109,7 +109,7 @@ func TestSessionGet_NotFound(t *testing.T) {
 
 func TestSessionGet_Human(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-2", "proj")
 
 	out, err := executeCommand(newRootCommand(),
@@ -127,7 +127,7 @@ func TestSessionGet_Human(t *testing.T) {
 // retries the lookup with each registered IDPrefix.
 func TestSessionGet_BareIDFindsPrefixed(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	bareID := "019da6a6-8c67-7c23-b102-ef48502852d0"
 	seedSessionWithOpts(t, dataDir, "codex:"+bareID, "proj",
 		func(s *db.Session) { s.Agent = "codex" })
@@ -144,7 +144,7 @@ func TestSessionGet_BareIDFindsPrefixed(t *testing.T) {
 
 func TestSessionList_JSONShape(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-a", "proj")
 	seedSession(t, dataDir, "s-b", "proj")
 
@@ -165,7 +165,7 @@ func TestSessionList_JSONShape(t *testing.T) {
 
 func TestSessionList_FilterByProject(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-a", "p1")
 	seedSession(t, dataDir, "s-b", "p2")
 
@@ -189,7 +189,7 @@ func TestSessionList_FilterByProject(t *testing.T) {
 // that converts the int flag into a *int on ListFilter.
 func TestSessionList_MinToolFailuresZero(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSessionWithOpts(t, dataDir, "s-a", "proj",
 		func(s *db.Session) { s.ToolFailureSignalCount = 0 })
 
@@ -239,7 +239,7 @@ func seedMessages(t *testing.T, dataDir, sessionID string, n int) {
 
 func TestSessionMessages_JSONShape(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-msgs", "proj")
 	seedMessages(t, dataDir, "s-msgs", 3)
 
@@ -260,7 +260,7 @@ func TestSessionMessages_JSONShape(t *testing.T) {
 
 func TestSessionMessages_FromLimit(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-msgs", "proj")
 	seedMessages(t, dataDir, "s-msgs", 5)
 
@@ -282,7 +282,7 @@ func TestSessionMessages_FromLimit(t *testing.T) {
 
 func TestSessionMessages_DirectionDesc(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-msgs", "proj")
 	seedMessages(t, dataDir, "s-msgs", 4)
 
@@ -342,7 +342,7 @@ func seedMessagesWithToolCalls(
 
 func TestSessionToolCalls_JSONShape(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-tc", "proj")
 	seedMessagesWithToolCalls(t, dataDir, "s-tc", 2)
 
@@ -364,7 +364,7 @@ func TestSessionToolCalls_JSONShape(t *testing.T) {
 
 func TestSessionToolCalls_HumanTable(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-tc2", "proj")
 	seedMessagesWithToolCalls(t, dataDir, "s-tc2", 2)
 
@@ -383,7 +383,7 @@ func TestSessionToolCalls_HumanTable(t *testing.T) {
 
 func TestSessionExport_StreamsFromDisk(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	src := filepath.Join(t.TempDir(), "session.jsonl")
 	body := "{\"type\":\"user\",\"content\":\"hello\"}\n" +
@@ -401,7 +401,7 @@ func TestSessionExport_StreamsFromDisk(t *testing.T) {
 
 func TestSessionExport_FailsWhenSourceMissing(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	nonExistent := filepath.Join(t.TempDir(), "gone.jsonl")
 	seedSessionWithOpts(t, dataDir, "s-1", "proj",
@@ -415,7 +415,7 @@ func TestSessionExport_FailsWhenSourceMissing(t *testing.T) {
 
 func TestSessionExport_FailsWhenNotInLocalArchive(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	_, err := executeCommand(newRootCommand(),
 		"session", "export", "unknown-id")
@@ -430,7 +430,7 @@ func TestSessionExport_FailsWhenNotInLocalArchive(t *testing.T) {
 // for scripts that expected JSON output.
 func TestSessionExport_RejectsFormatFlag(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	_, err := executeCommand(newRootCommand(),
 		"session", "export", "some-id", "--format", "json")
@@ -447,7 +447,7 @@ func TestSessionExport_RejectsFormatFlag(t *testing.T) {
 // sync.Engine as in the default newService path).
 func TestSessionSync_UnknownID_ReportsNoFilePath(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	_, err := executeCommand(newRootCommand(),
 		"session", "sync", "missing-id")
@@ -466,7 +466,7 @@ func TestSessionSync_UnknownID_ReportsNoFilePath(t *testing.T) {
 // real HTTP handler.
 func TestSessionSync_AgainstReadOnlyDaemon_Refuses(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	_, port := freeTCPListener(t)
 	_, err := server.WriteStateFile(
@@ -489,7 +489,7 @@ func TestSessionSync_AgainstReadOnlyDaemon_Refuses(t *testing.T) {
 // SQLite write ownership.
 func TestSessionSync_WhenDaemonActiveButUnreachable_Refuses(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	// Bind then immediately close so the port is guaranteed
 	// free and no TCP listener is accepting.
@@ -524,7 +524,7 @@ func TestSessionSync_WhenDaemonActiveButUnreachable_Refuses(t *testing.T) {
 // returns synchronously would complete in single-digit ms.
 func TestSessionWatch_ExitsOnCancel(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	seedSession(t, dataDir, "s-watch", "proj")
 
 	root := newRootCommand()
@@ -585,7 +585,7 @@ func TestSessionWatch_ExitsOnCancel(t *testing.T) {
 // footgun for automation scripts.
 func TestSessionWatch_UnknownID_FailsFast(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 
 	_, err := executeCommand(newRootCommand(),
 		"session", "watch", "unknown-id")

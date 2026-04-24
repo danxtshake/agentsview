@@ -537,6 +537,16 @@ func (c *Config) writeConfigMap(m map[string]any) error {
 	return nil
 }
 
+// dataDirFromEnv returns the data directory from the environment, preferring
+// AGENTSVIEW_DATA_DIR and falling back to the legacy AGENT_VIEWER_DATA_DIR.
+// Returns "" when neither is set.
+func dataDirFromEnv() string {
+	if v := os.Getenv("AGENTSVIEW_DATA_DIR"); v != "" {
+		return v
+	}
+	return os.Getenv("AGENT_VIEWER_DATA_DIR")
+}
+
 func (c *Config) loadEnv() {
 	for _, def := range parser.Registry {
 		if v := os.Getenv(def.EnvVar); v != "" {
@@ -544,7 +554,7 @@ func (c *Config) loadEnv() {
 			c.agentDirSource[def.Type] = dirEnv
 		}
 	}
-	if v := os.Getenv("AGENT_VIEWER_DATA_DIR"); v != "" {
+	if v := dataDirFromEnv(); v != "" {
 		c.DataDir = v
 	}
 	if v := os.Getenv("AGENTSVIEW_PG_URL"); v != "" {
@@ -1052,7 +1062,7 @@ func ResolveDataDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if v := os.Getenv("AGENT_VIEWER_DATA_DIR"); v != "" {
+	if v := dataDirFromEnv(); v != "" {
 		cfg.DataDir = v
 	}
 	return cfg.DataDir, nil

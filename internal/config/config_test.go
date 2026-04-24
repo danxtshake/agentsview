@@ -48,7 +48,7 @@ func setupTestEnv(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dir)
 	return dir
 }
 
@@ -593,7 +593,7 @@ func TestResolveDataDir_DefaultAndEnvOverride(t *testing.T) {
 
 	// With env override, should return the override
 	custom := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", custom)
+	t.Setenv("AGENTSVIEW_DATA_DIR", custom)
 	dir, err = ResolveDataDir()
 	if err != nil {
 		t.Fatal(err)
@@ -601,6 +601,37 @@ func TestResolveDataDir_DefaultAndEnvOverride(t *testing.T) {
 	if dir != custom {
 		t.Errorf("ResolveDataDir = %q, want %q", dir, custom)
 	}
+}
+
+// TestDataDir_LegacyEnvFallback verifies that the legacy AGENT_VIEWER_DATA_DIR
+// env var still takes effect when the canonical AGENTSVIEW_DATA_DIR is unset,
+// and that the canonical name wins when both are set.
+func TestDataDir_LegacyEnvFallback(t *testing.T) {
+	t.Run("legacy used when canonical unset", func(t *testing.T) {
+		legacy := t.TempDir()
+		t.Setenv("AGENT_VIEWER_DATA_DIR", legacy)
+		dir, err := ResolveDataDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dir != legacy {
+			t.Errorf("ResolveDataDir = %q, want %q", dir, legacy)
+		}
+	})
+
+	t.Run("canonical wins over legacy", func(t *testing.T) {
+		legacy := t.TempDir()
+		canonical := t.TempDir()
+		t.Setenv("AGENT_VIEWER_DATA_DIR", legacy)
+		t.Setenv("AGENTSVIEW_DATA_DIR", canonical)
+		dir, err := ResolveDataDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if dir != canonical {
+			t.Errorf("ResolveDataDir = %q, want %q (canonical should win)", dir, canonical)
+		}
+	})
 }
 
 func TestEnvOverridesConfigFile(t *testing.T) {

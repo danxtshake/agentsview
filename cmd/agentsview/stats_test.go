@@ -261,7 +261,7 @@ var updateGolden = flag.Bool(
 //	go test ./cmd/agentsview -run TestStatsGolden -update
 func TestStatsGolden(t *testing.T) {
 	dataDir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dataDir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dataDir)
 	// TZ is stripped by --timezone=UTC but the environment can
 	// still leak into date parsing on some platforms; pin it too.
 	t.Setenv("TZ", "UTC")

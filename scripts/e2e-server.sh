@@ -43,7 +43,7 @@ fi
 # Every agent dir must point to EMPTY_DIR to prevent
 # the server from discovering real sessions on the host.
 echo "Starting e2e server on :8090..."
-AGENT_VIEWER_DATA_DIR="$TMPDIR" \
+AGENTSVIEW_DATA_DIR="$TMPDIR" \
 CLAUDE_PROJECTS_DIR="$EMPTY_DIR" \
 CODEX_SESSIONS_DIR="$EMPTY_DIR" \
 COPILOT_DIR="$EMPTY_DIR" \

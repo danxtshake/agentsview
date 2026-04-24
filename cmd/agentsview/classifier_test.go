@@ -20,7 +20,7 @@ import (
 func classifierTestEnv(t *testing.T, prefixes []string) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("AGENT_VIEWER_DATA_DIR", dir)
+	t.Setenv("AGENTSVIEW_DATA_DIR", dir)
 
 	tomlBuf := &bytes.Buffer{}
 	tomlBuf.WriteString("[automated]\nprefixes = [")

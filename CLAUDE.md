@@ -27,7 +27,7 @@ CLI (agentsview) → Config → DB (SQLite/FTS5)
 - **Sync**: File watcher + periodic sync (15min) for session directories
 - **PG Sync**: On-demand push sync from SQLite to PostgreSQL via `pg push`
 - **Frontend**: Svelte 5 SPA embedded in the Go binary at build time
-- **Config**: `AGENT_VIEWER_DATA_DIR` plus per-agent directory overrides (see
+- **Config**: `AGENTSVIEW_DATA_DIR` plus per-agent directory overrides (see
   `EnvVar` on each entry in `internal/parser/types.go`) and CLI flags
 
 ## Project Structure

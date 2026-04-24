@@ -52,7 +52,7 @@ func TestMustLoadConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("AGENT_VIEWER_DATA_DIR", t.TempDir())
+			t.Setenv("AGENTSVIEW_DATA_DIR", t.TempDir())
 			cmd := newServeCommand()
 			if err := cmd.Flags().Parse(tt.args); err != nil {
 				t.Fatalf("Parse: %v", err)

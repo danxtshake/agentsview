@@ -120,7 +120,7 @@ dev-snapshot: build
 	else \
 		echo "Reusing existing snapshot at $(SNAPSHOT_ABS)/sessions.db"; \
 	fi
-	AGENT_VIEWER_DATA_DIR="$(SNAPSHOT_ABS)" ./agentsview serve --port 0
+	AGENTSVIEW_DATA_DIR="$(SNAPSHOT_ABS)" ./agentsview serve --port 0
 
 # Ensure air is installed for backend live reload
 check-air:
