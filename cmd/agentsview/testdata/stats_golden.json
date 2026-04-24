@@ -11,7 +11,17 @@
       "codex": 20,
       "cursor": 6
     },
+    "by_messages_human": {
+      "claude": 322,
+      "codex": 20,
+      "cursor": 6
+    },
     "by_sessions": {
+      "claude": 9,
+      "codex": 1,
+      "cursor": 1
+    },
+    "by_sessions_human": {
       "claude": 9,
       "codex": 1,
       "cursor": 1
@@ -19,15 +29,19 @@
     "by_tokens": {
       "claude": 151420
     },
-    "primary": "claude"
+    "by_tokens_human": {
+      "claude": 151420
+    },
+    "primary": "claude",
+    "primary_human": "claude"
   },
   "archetypes": {
-    "automation": 2,
+    "automation": 0,
     "deep": 2,
     "marathon": 1,
-    "primary": "standard",
-    "primary_human": "standard",
-    "quick": 3,
+    "primary": "quick",
+    "primary_human": "quick",
+    "quick": 5,
     "standard": 3
   },
   "cache_economics": {
@@ -134,14 +148,14 @@
             ]
           },
           {
-            "count": 0,
+            "count": 1,
             "edge": [
               1,
               5
             ]
           },
           {
-            "count": 2,
+            "count": 3,
             "edge": [
               5,
               20
@@ -169,7 +183,7 @@
             ]
           }
         ],
-        "mean": 72.77777777777777
+        "mean": 60.36363636363637
       }
     },
     "peak_context_tokens": {
@@ -321,7 +335,7 @@
       "scope_human": {
         "buckets": [
           {
-            "count": 7,
+            "count": 9,
             "edge": [
               0,
               1
@@ -363,7 +377,7 @@
             ]
           }
         ],
-        "mean": 0.39055555555555554
+        "mean": 0.3195454545454545
       }
     },
     "user_messages": {
@@ -452,7 +466,7 @@
             ]
           }
         ],
-        "mean": 19.11111111111111
+        "mean": 15.818181818181818
       }
     }
   },
@@ -559,8 +573,8 @@
   "totals": {
     "messages_total": 348,
     "sessions_all": 11,
-    "sessions_automation": 2,
-    "sessions_human": 9,
+    "sessions_automation": 0,
+    "sessions_human": 11,
     "user_messages_total": 174
   },
   "velocity": {
