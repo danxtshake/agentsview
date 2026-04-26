@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -140,6 +141,95 @@ func TestExtractTarGz(t *testing.T) {
 	}
 	if string(content) != "binary-content" {
 		t.Errorf("got %q, want %q", content, "binary-content")
+	}
+}
+
+func TestInstallBinaryToSetsExecutableMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix mode bits not meaningful on Windows")
+	}
+
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "agentsview")
+	dstPath := filepath.Join(dstDir, "agentsview")
+
+	if err := os.WriteFile(srcPath, []byte("binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := installBinaryTo(srcPath, dstPath); err != nil {
+		t.Fatalf("installBinaryTo: %v", err)
+	}
+
+	info, err := os.Stat(dstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Errorf("dstPath mode = %o, want 0755", got)
+	}
+}
+
+func TestInstallBinaryToPreservesOnSourceMissing(t *testing.T) {
+	dstDir := t.TempDir()
+	dstPath := filepath.Join(dstDir, "agentsview")
+
+	if err := os.WriteFile(
+		dstPath, []byte("original"), 0o755,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	missingSrc := filepath.Join(t.TempDir(), "does-not-exist")
+
+	if err := installBinaryTo(missingSrc, dstPath); err == nil {
+		t.Fatal("expected error from missing source")
+	}
+
+	got, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatalf("dstPath should still exist: %v", err)
+	}
+	if string(got) != "original" {
+		t.Errorf("dstPath content = %q, want %q", got, "original")
+	}
+
+	if _, err := os.Stat(dstPath + ".new"); !os.IsNotExist(err) {
+		t.Error("staging .new file should not be left behind")
+	}
+	if _, err := os.Stat(dstPath + ".old"); !os.IsNotExist(err) {
+		t.Error("backup .old file should not be left behind")
+	}
+}
+
+func TestInstallBinaryToRemovesStaleStagingFile(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "agentsview")
+	dstPath := filepath.Join(dstDir, "agentsview")
+
+	if err := os.WriteFile(srcPath, []byte("new-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dstPath, []byte("old-binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stagingPath := dstPath + ".new"
+	if err := os.WriteFile(
+		stagingPath, []byte("stale-staging"), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := installBinaryTo(srcPath, dstPath); err != nil {
+		t.Fatalf("installBinaryTo: %v", err)
+	}
+
+	if _, err := os.Stat(stagingPath); !os.IsNotExist(err) {
+		t.Errorf(
+			"stale staging file should be removed, got err=%v", err,
+		)
 	}
 }
 

@@ -285,34 +285,60 @@ func installFromArchiveTo(
 }
 
 // installBinaryTo replaces the binary at dstPath with the one
-// at srcPath using a rename-then-copy pattern that works on
-// all platforms including Windows.
+// at srcPath. The new binary is staged in a sibling tmp file
+// with the executable mode bit set, then atomically renamed
+// into place. This avoids a window in which a consumer running
+// agentsview concurrently with the update would observe a
+// partial or non-executable file at dstPath.
 func installBinaryTo(srcPath, dstPath string) error {
 	backupPath := dstPath + ".old"
+	tmpPath := dstPath + ".new"
 
-	// Remove stale backup from a previous update.
+	// Clean up leftovers from a prior failed update so they
+	// don't interfere with the renames below.
 	os.Remove(backupPath)
+	os.Remove(tmpPath)
 
+	installed := false
+	defer func() {
+		if !installed {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	// Stage the new binary at tmpPath with executable mode set
+	// BEFORE touching the live binary at dstPath.
+	if err := copyFile(srcPath, tmpPath); err != nil {
+		return fmt.Errorf("install: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		return fmt.Errorf("chmod: %w", err)
+	}
+
+	// Move the existing binary aside before installing. Windows
+	// requires this because os.Rename cannot replace a running
+	// binary; on Unix it provides a rollback target.
+	haveExisting := false
 	if _, err := os.Stat(dstPath); err == nil {
 		if err := os.Rename(dstPath, backupPath); err != nil {
 			return fmt.Errorf("backup: %w", err)
 		}
+		haveExisting = true
 	}
 
-	if err := copyFile(srcPath, dstPath); err != nil {
-		if restoreErr := os.Rename(backupPath, dstPath); restoreErr != nil {
-			return fmt.Errorf(
-				"install: %w (rollback also failed: %v)",
-				err, restoreErr,
-			)
+	if err := os.Rename(tmpPath, dstPath); err != nil {
+		if haveExisting {
+			if rbErr := os.Rename(backupPath, dstPath); rbErr != nil {
+				return fmt.Errorf(
+					"install: %w (rollback also failed: %v)",
+					err, rbErr,
+				)
+			}
 		}
 		return fmt.Errorf("install: %w", err)
 	}
 
-	if err := os.Chmod(dstPath, 0o755); err != nil {
-		return fmt.Errorf("chmod: %w", err)
-	}
-
+	installed = true
 	os.Remove(backupPath)
 	return nil
 }
