@@ -367,17 +367,13 @@ func TestWatchRecursiveBudget_DegradesWhenBudgetExhausted(t *testing.T) {
 	}
 	w.Start()
 	t.Cleanup(func() { w.Stop() })
-	w.setRecursiveWatchBudgetForTest(3)
 
-	result := w.WatchRecursiveBudgeted(root)
+	result := w.WatchRecursiveBudgeted(root, 3)
 	if result.Watched != 3 {
 		t.Fatalf("Watched = %d, want 3", result.Watched)
 	}
 	if !result.BudgetExhausted {
 		t.Fatal("BudgetExhausted = false, want true")
-	}
-	if result.Unwatched == 0 {
-		t.Fatal("Unwatched = 0, want remaining directories counted")
 	}
 }
 

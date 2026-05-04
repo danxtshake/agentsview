@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,8 +16,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 )
-
-const defaultRecursiveWatchBudget = 8192
 
 type RecursiveWatchResult struct {
 	Watched             int
@@ -30,19 +29,18 @@ type RecursiveWatchResult struct {
 // Watcher uses fsnotify to watch session directories for changes
 // and triggers a callback with debouncing.
 type Watcher struct {
-	onChange             func(paths []string)
-	watcher              *fsnotify.Watcher
-	debounce             time.Duration
-	excludes             []string
-	roots                []string
-	rootsMu              sync.RWMutex
-	pending              map[string]time.Time
-	mu                   sync.Mutex
-	stop                 chan struct{}
-	done                 chan struct{}
-	stopOnce             sync.Once
-	now                  func() time.Time
-	recursiveWatchBudget int
+	onChange func(paths []string)
+	watcher  *fsnotify.Watcher
+	debounce time.Duration
+	excludes []string
+	roots    []string
+	rootsMu  sync.RWMutex
+	pending  map[string]time.Time
+	mu       sync.Mutex
+	stop     chan struct{}
+	done     chan struct{}
+	stopOnce sync.Once
+	now      func() time.Time
 }
 
 // NewWatcher creates a file watcher that calls onChange when
@@ -58,15 +56,14 @@ func NewWatcher(debounce time.Duration, onChange func(paths []string), excludes 
 	}
 
 	w := &Watcher{
-		onChange:             onChange,
-		watcher:              fsw,
-		debounce:             debounce,
-		excludes:             normalizeExcludePatterns(excludes),
-		pending:              make(map[string]time.Time),
-		stop:                 make(chan struct{}),
-		done:                 make(chan struct{}),
-		now:                  time.Now,
-		recursiveWatchBudget: defaultRecursiveWatchBudget,
+		onChange: onChange,
+		watcher:  fsw,
+		debounce: debounce,
+		excludes: normalizeExcludePatterns(excludes),
+		pending:  make(map[string]time.Time),
+		stop:     make(chan struct{}),
+		done:     make(chan struct{}),
+		now:      time.Now,
 	}
 	return w, nil
 }
@@ -75,46 +72,48 @@ func NewWatcher(debounce time.Duration, onChange func(paths []string), excludes 
 // subdirectories to the watch list. Returns the number
 // of directories watched and unwatched (failed to add).
 func (w *Watcher) WatchRecursive(root string) (watched int, unwatched int, err error) {
-	result := w.WatchRecursiveBudgeted(root)
+	result := w.WatchRecursiveBudgeted(root, math.MaxInt)
 	return result.Watched, result.Unwatched, result.Err
 }
 
-func (w *Watcher) setRecursiveWatchBudgetForTest(n int) {
-	w.recursiveWatchBudget = n
-}
-
-func (w *Watcher) WatchRecursiveBudgeted(root string) RecursiveWatchResult {
+// WatchRecursiveBudgeted walks a directory tree and adds at most
+// budget subdirectories to the watch list. The walk stops as soon
+// as the budget is exhausted or fsnotify reports resource
+// exhaustion, so the caller can degrade the rest of the tree to
+// polling without continuing to traverse it.
+func (w *Watcher) WatchRecursiveBudgeted(root string, budget int) RecursiveWatchResult {
 	var result RecursiveWatchResult
 	root = filepath.Clean(root)
 	w.addRoot(root)
 
+	remaining := budget
 	result.Err = filepath.WalkDir(root,
 		func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return nil // skip inaccessible dirs
 			}
-			if d.IsDir() {
-				// Skip entire excluded subtrees, but always keep the root.
-				if path != root && w.shouldExcludeForRoot(path, root) {
-					return filepath.SkipDir
-				}
-				if w.recursiveWatchBudget <= 0 {
-					result.Unwatched++
-					result.BudgetExhausted = true
-					return nil
-				}
-				if addErr := w.watcher.Add(path); addErr != nil {
-					result.Unwatched++
-					if isWatchResourceExhaustion(addErr) {
-						result.ResourceExhausted = true
-						result.ResourceExhaustedAt = path
-						return filepath.SkipAll
-					}
-				} else {
-					w.recursiveWatchBudget--
-					result.Watched++
-				}
+			if !d.IsDir() {
+				return nil
 			}
+			// Skip entire excluded subtrees, but always keep the root.
+			if path != root && w.shouldExcludeForRoot(path, root) {
+				return filepath.SkipDir
+			}
+			if remaining <= 0 {
+				result.BudgetExhausted = true
+				return filepath.SkipAll
+			}
+			if addErr := w.watcher.Add(path); addErr != nil {
+				result.Unwatched++
+				if isWatchResourceExhaustion(addErr) {
+					result.ResourceExhausted = true
+					result.ResourceExhaustedAt = path
+					return filepath.SkipAll
+				}
+				return nil
+			}
+			remaining--
+			result.Watched++
 			return nil
 		})
 	if errors.Is(result.Err, filepath.SkipAll) {

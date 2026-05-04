@@ -32,6 +32,7 @@ const (
 	periodicSyncInterval  = 15 * time.Minute
 	unwatchedPollInterval = 2 * time.Minute
 	watcherDebounce       = 500 * time.Millisecond
+	recursiveWatchBudget  = 8192
 )
 
 func main() {
@@ -500,6 +501,7 @@ func startFileWatcher(
 
 	var totalWatched int
 	var shallowWatched int
+	remaining := recursiveWatchBudget
 	for _, r := range roots {
 		if r.shallow {
 			if watcher.WatchShallow(r.root) {
@@ -510,8 +512,9 @@ func startFileWatcher(
 			}
 			continue
 		}
-		result := watcher.WatchRecursiveBudgeted(r.root)
+		result := watcher.WatchRecursiveBudgeted(r.root, remaining)
 		totalWatched += result.Watched
+		remaining -= result.Watched
 		if result.Unwatched > 0 || result.BudgetExhausted ||
 			result.ResourceExhausted || result.Err != nil {
 			unwatchedDirs = append(unwatchedDirs, r.dir)
