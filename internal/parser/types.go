@@ -22,6 +22,7 @@ const (
 	AgentZencoder      AgentType = "zencoder"
 	AgentVSCodeCopilot AgentType = "vscode-copilot"
 	AgentPi            AgentType = "pi"
+	AgentQwen          AgentType = "qwen"
 	AgentOpenClaw      AgentType = "openclaw"
 	AgentKimi          AgentType = "kimi"
 	AgentClaudeAI      AgentType = "claude-ai"
@@ -221,6 +222,20 @@ var Registry = []AgentDef{
 		FileBased:      true,
 		DiscoverFunc:   DiscoverPiSessions,
 		FindSourceFunc: FindPiSourceFile,
+	},
+	{
+		Type:        AgentQwen,
+		DisplayName: "Qwen Code",
+		EnvVar:      "QWEN_PROJECTS_DIR",
+		ConfigKey:   "qwen_project_dirs",
+		DefaultDirs: []string{".qwen/projects"},
+		IDPrefix:    "qwen:",
+		// Sessions live under <projectsDir>/<encoded-project>/chats/<id>.jsonl,
+		// so the projects root must be watched recursively — pinning the
+		// watch to a "chats" subdir of the root catches no events.
+		FileBased:      true,
+		DiscoverFunc:   DiscoverQwenSessions,
+		FindSourceFunc: FindQwenSourceFile,
 	},
 	{
 		Type:           AgentOpenClaw,

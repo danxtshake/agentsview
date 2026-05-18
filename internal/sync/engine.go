@@ -791,6 +791,28 @@ func (e *Engine) classifyOnePath(
 		}
 	}
 
+	// Qwen: <qwenProjectsDir>/<encoded-project>/chats/<session>.jsonl
+	for _, qwenDir := range e.agentDirs[parser.AgentQwen] {
+		if qwenDir == "" {
+			continue
+		}
+		if rel, ok := isUnder(qwenDir, path); ok {
+			parts := strings.Split(rel, sep)
+			if len(parts) != 3 || parts[1] != "chats" {
+				continue
+			}
+			sessionID, ok := strings.CutSuffix(parts[2], ".jsonl")
+			if !ok || !parser.IsValidSessionID(sessionID) {
+				continue
+			}
+			return parser.DiscoveredFile{
+				Path:    path,
+				Project: parser.GetProjectName(parts[0]),
+				Agent:   parser.AgentQwen,
+			}, true
+		}
+	}
+
 	// OpenClaw: <openclawDir>/<agentId>/sessions/<sessionId>.jsonl
 	//       or: <openclawDir>/<agentId>/sessions/<sessionId>.jsonl.<archiveSuffix>
 	for _, ocDir := range e.agentDirs[parser.AgentOpenClaw] {
@@ -2357,6 +2379,8 @@ func (e *Engine) processFile(
 		res = e.processVSCodeCopilot(file, info)
 	case parser.AgentPi:
 		res = e.processPi(file, info)
+	case parser.AgentQwen:
+		res = e.processQwen(file, info)
 	case parser.AgentOpenClaw:
 		res = e.processOpenClaw(file, info)
 	case parser.AgentKimi:
@@ -3481,6 +3505,36 @@ func (e *Engine) processPi(
 	}
 
 	sess, msgs, err := parser.ParsePiSession(
+		file.Path, file.Project, e.machine,
+	)
+	if err != nil {
+		return processResult{err: err}
+	}
+	if sess == nil {
+		return processResult{}
+	}
+
+	hash, err := ComputeFileHash(file.Path)
+	if err == nil {
+		sess.File.Hash = hash
+	}
+
+	return processResult{
+		results: []parser.ParseResult{{
+			Session:  *sess,
+			Messages: msgs,
+		}},
+	}
+}
+
+func (e *Engine) processQwen(
+	file parser.DiscoveredFile, info os.FileInfo,
+) processResult {
+	if e.shouldSkipByPath(file.Path, info) {
+		return processResult{skip: true}
+	}
+
+	sess, msgs, err := parser.ParseQwenSession(
 		file.Path, file.Project, e.machine,
 	)
 	if err != nil {
@@ -4721,6 +4775,11 @@ func (e *Engine) SyncSingleSession(sessionID string) (err error) {
 		// path is <kimiDir>/<project-hash>/<session-uuid>/wire.jsonl
 		// Derive project from two levels up.
 		file.Project = filepath.Base(filepath.Dir(filepath.Dir(path)))
+	case parser.AgentQwen:
+		// path is <qwenProjectsDir>/<encoded-project>/chats/<session>.jsonl
+		file.Project = parser.GetProjectName(
+			filepath.Base(filepath.Dir(filepath.Dir(path))),
+		)
 	}
 
 	res := e.processFile(file)
